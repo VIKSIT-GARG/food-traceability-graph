@@ -1,0 +1,233 @@
+source_id,relationship_type,target_id,properties
+SUP-001,SUPPLIES,BATCH-RICE-001,{}
+SUP-001,SUPPLIES,BATCH-TOMATO-001,{}
+SUP-001,SUPPLIES,BATCH-CHICKPEA-001,{}
+SUP-002,SUPPLIES,BATCH-CREAM-001,{}
+SUP-002,SUPPLIES,BATCH-BUTTER-001,{}
+SUP-002,SUPPLIES,BATCH-PANEER-002,{}
+SUP-002,SUPPLIES,BATCH-PANEER-001,{}
+SUP-003,SUPPLIES,BATCH-SPINACH-001,{}
+SUP-004,SUPPLIES,BATCH-SPICE-001,{}
+SUP-005,SUPPLIES,BATCH-CHICKEN-001,{}
+BATCH-SPINACH-001,PROCESSED_AT,FAC-001,{'timestamp': '2025-09-08T12:00:00+05:30'}
+BATCH-PANEER-001,PROCESSED_AT,FAC-001,{'timestamp': '2025-09-09T10:00:00+05:30'}
+BATCH-PANEER-002,PROCESSED_AT,FAC-001,{'timestamp': '2025-09-11T09:00:00+05:30'}
+BATCH-CHICKEN-001,PROCESSED_AT,FAC-001,{'timestamp': '2025-09-09T08:00:00+05:30'}
+BATCH-CREAM-001,PROCESSED_AT,FAC-002,{'timestamp': '2025-09-06T14:00:00+05:30'}
+BATCH-PANEER-001,PROCESSED_AT,FAC-002,{'timestamp': '2025-09-09T14:00:00+05:30'}
+BATCH-CHICKEN-001,PROCESSED_AT,FAC-002,{'timestamp': '2025-09-09T12:00:00+05:30'}
+BATCH-PANEER-001,PROCESSED_AT,FAC-003,{'timestamp': '2025-09-09T16:00:00+05:30'}
+BATCH-TOMATO-001,PROCESSED_AT,FAC-004,{'timestamp': '2025-09-09T15:00:00+05:30'}
+BATCH-RICE-001,PROCESSED_AT,FAC-004,{'timestamp': '2025-08-21T10:00:00+05:30'}
+BATCH-PANEER-001,DELIVERED_TO,CK-001,"{'delivery_date': '2025-09-10T09:00:00+05:30', 'qty_kg': '25.0'}"
+BATCH-PANEER-001,DELIVERED_TO,CK-003,"{'delivery_date': '2025-09-10T16:30:00+05:30', 'qty_kg': '20.0'}"
+BATCH-PANEER-001,DELIVERED_TO,CK-005,"{'delivery_date': '2025-09-11T08:00:00+05:30', 'qty_kg': '12.0'}"
+BATCH-PANEER-001,DELIVERED_TO,CK-002,"{'delivery_date': '2025-09-10T13:00:00+05:30', 'qty_kg': '18.0'}"
+BATCH-PANEER-002,DELIVERED_TO,CK-001,"{'delivery_date': '2025-09-11T10:00:00+05:30', 'qty_kg': '22.0'}"
+BATCH-PANEER-002,DELIVERED_TO,CK-004,"{'delivery_date': '2025-09-11T11:00:00+05:30', 'qty_kg': '15.0'}"
+BATCH-SPINACH-001,DELIVERED_TO,CK-001,"{'delivery_date': '2025-09-08T18:00:00+05:30', 'qty_kg': '10.0'}"
+BATCH-CHICKEN-001,DELIVERED_TO,CK-005,"{'delivery_date': '2025-09-09T21:00:00+05:30', 'qty_kg': '20.0'}"
+BATCH-CHICKEN-001,DELIVERED_TO,CK-002,"{'delivery_date': '2025-09-09T20:00:00+05:30', 'qty_kg': '30.0'}"
+BATCH-RICE-001,DELIVERED_TO,CK-001,"{'delivery_date': '2025-08-22T09:00:00+05:30', 'qty_kg': '100.0'}"
+BATCH-RICE-001,DELIVERED_TO,CK-003,"{'delivery_date': '2025-08-22T10:00:00+05:30', 'qty_kg': '80.0'}"
+BATCH-TOMATO-001,DELIVERED_TO,CK-004,"{'delivery_date': '2025-09-10T10:00:00+05:30', 'qty_kg': '25.0'}"
+BATCH-TOMATO-001,DELIVERED_TO,CK-002,"{'delivery_date': '2025-09-09T19:00:00+05:30', 'qty_kg': '40.0'}"
+BATCH-BUTTER-001,DELIVERED_TO,CK-002,"{'delivery_date': '2025-09-06T10:00:00+05:30', 'qty_kg': '15.0'}"
+BATCH-BUTTER-001,DELIVERED_TO,CK-001,"{'delivery_date': '2025-09-06T09:00:00+05:30', 'qty_kg': '15.0'}"
+BATCH-SPICE-001,DELIVERED_TO,CK-004,"{'delivery_date': '2025-08-26T09:00:00+05:30', 'qty_kg': '5.0'}"
+BATCH-SPICE-001,DELIVERED_TO,CK-001,"{'delivery_date': '2025-08-26T09:00:00+05:30', 'qty_kg': '5.0'}"
+BATCH-CHICKPEA-001,DELIVERED_TO,CK-004,"{'delivery_date': '2025-08-23T09:00:00+05:30', 'qty_kg': '50.0'}"
+BATCH-CREAM-001,DELIVERED_TO,CK-001,"{'delivery_date': '2025-09-07T09:00:00+05:30', 'qty_kg': '10.0'}"
+BATCH-CREAM-001,DELIVERED_TO,CK-004,"{'delivery_date': '2025-09-07T10:00:00+05:30', 'qty_kg': '8.0'}"
+CK-005,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-09T11:00:00+05:30', 'qty_kg': '4.0'}"
+CK-005,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T12:00:00+05:30', 'qty_kg': '5.0'}"
+CK-002,USED_IN,DSH-001,"{'batch_id': 'BATCH-BUTTER-001', 'timestamp': '2025-09-10T12:00:00+05:30', 'qty_kg': '3.0'}"
+CK-001,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T12:00:00+05:30', 'qty_kg': '5.0'}"
+CK-001,USED_IN,DSH-001,"{'batch_id': 'BATCH-BUTTER-001', 'timestamp': '2025-09-10T12:00:00+05:30', 'qty_kg': '3.0'}"
+CK-001,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T15:30:00+05:30', 'qty_kg': '6.0'}"
+CK-002,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T15:30:00+05:30', 'qty_kg': '6.0'}"
+CK-003,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T15:30:00+05:30', 'qty_kg': '6.0'}"
+CK-003,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T12:00:00+05:30', 'qty_kg': '5.0'}"
+CK-004,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-002', 'timestamp': '2025-09-11T19:00:00+05:30', 'qty_kg': '5.0'}"
+CK-002,USED_IN,DSH-001,"{'batch_id': 'BATCH-TOMATO-001', 'timestamp': '2025-09-10T13:00:00+05:30', 'qty_kg': '6.0'}"
+CK-001,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-09T11:00:00+05:30', 'qty_kg': '4.0'}"
+CK-005,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:00:00+05:30', 'qty_kg': '6.0'}"
+CK-004,USED_IN,DSH-001,"{'batch_id': 'BATCH-CREAM-001', 'timestamp': '2025-09-10T12:10:00+05:30', 'qty_kg': '2.0'}"
+CK-002,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T12:00:00+05:30', 'qty_kg': '5.0'}"
+CK-003,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:00:00+05:30', 'qty_kg': '6.0'}"
+CK-002,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:00:00+05:30', 'qty_kg': '6.0'}"
+CK-001,USED_IN,DSH-001,"{'batch_id': 'BATCH-CREAM-001', 'timestamp': '2025-09-10T12:10:00+05:30', 'qty_kg': '2.0'}"
+CK-003,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-09T11:00:00+05:30', 'qty_kg': '4.0'}"
+CK-001,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-002', 'timestamp': '2025-09-11T19:00:00+05:30', 'qty_kg': '5.0'}"
+CK-004,USED_IN,DSH-001,"{'batch_id': 'BATCH-TOMATO-001', 'timestamp': '2025-09-10T13:00:00+05:30', 'qty_kg': '6.0'}"
+CK-002,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-09T11:00:00+05:30', 'qty_kg': '4.0'}"
+CK-001,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:00:00+05:30', 'qty_kg': '6.0'}"
+CK-005,USED_IN,DSH-001,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T15:30:00+05:30', 'qty_kg': '6.0'}"
+CK-001,USED_IN,DSH-002,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T12:30:00+05:30', 'qty_kg': '4.0'}"
+CK-001,USED_IN,DSH-002,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:30:00+05:30', 'qty_kg': '5.0'}"
+CK-001,USED_IN,DSH-002,"{'batch_id': 'BATCH-SPINACH-001', 'timestamp': '2025-09-09T12:00:00+05:30', 'qty_kg': '3.0'}"
+CK-005,USED_IN,DSH-002,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:30:00+05:30', 'qty_kg': '5.0'}"
+CK-002,USED_IN,DSH-002,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:30:00+05:30', 'qty_kg': '5.0'}"
+CK-003,USED_IN,DSH-002,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T12:30:00+05:30', 'qty_kg': '4.0'}"
+CK-002,USED_IN,DSH-002,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T12:30:00+05:30', 'qty_kg': '4.0'}"
+CK-005,USED_IN,DSH-002,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T12:30:00+05:30', 'qty_kg': '4.0'}"
+CK-003,USED_IN,DSH-002,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:30:00+05:30', 'qty_kg': '5.0'}"
+CK-005,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T10:00:00+05:30', 'qty_kg': '5.0'}"
+CK-005,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T15:45:00+05:30', 'qty_kg': '5.0'}"
+CK-002,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T10:00:00+05:30', 'qty_kg': '5.0'}"
+CK-004,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-002', 'timestamp': '2025-09-11T19:30:00+05:30', 'qty_kg': '4.0'}"
+CK-001,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T15:45:00+05:30', 'qty_kg': '5.0'}"
+CK-001,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-002', 'timestamp': '2025-09-11T19:30:00+05:30', 'qty_kg': '4.0'}"
+CK-002,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T15:45:00+05:30', 'qty_kg': '5.0'}"
+CK-001,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T10:00:00+05:30', 'qty_kg': '5.0'}"
+CK-003,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T15:45:00+05:30', 'qty_kg': '5.0'}"
+CK-003,USED_IN,DSH-003,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T10:00:00+05:30', 'qty_kg': '5.0'}"
+CK-005,USED_IN,DSH-004,"{'batch_id': 'BATCH-CHICKEN-001', 'timestamp': '2025-09-10T11:30:00+05:30', 'qty_kg': '8.0'}"
+CK-001,USED_IN,DSH-004,"{'batch_id': 'BATCH-SPICE-001', 'timestamp': '2025-09-10T11:45:00+05:30', 'qty_kg': '1.0'}"
+CK-001,USED_IN,DSH-004,"{'batch_id': 'BATCH-RICE-001', 'timestamp': '2025-09-10T11:45:00+05:30', 'qty_kg': '10.0'}"
+CK-002,USED_IN,DSH-004,"{'batch_id': 'BATCH-CHICKEN-001', 'timestamp': '2025-09-10T11:30:00+05:30', 'qty_kg': '8.0'}"
+CK-004,USED_IN,DSH-004,"{'batch_id': 'BATCH-SPICE-001', 'timestamp': '2025-09-10T11:45:00+05:30', 'qty_kg': '1.0'}"
+CK-003,USED_IN,DSH-004,"{'batch_id': 'BATCH-RICE-001', 'timestamp': '2025-09-10T11:45:00+05:30', 'qty_kg': '10.0'}"
+CK-002,USED_IN,DSH-005,"{'batch_id': 'BATCH-CHICKEN-001', 'timestamp': '2025-09-10T13:00:00+05:30', 'qty_kg': '7.0'}"
+CK-005,USED_IN,DSH-005,"{'batch_id': 'BATCH-CHICKEN-001', 'timestamp': '2025-09-10T13:00:00+05:30', 'qty_kg': '7.0'}"
+CK-002,USED_IN,DSH-005,"{'batch_id': 'BATCH-BUTTER-001', 'timestamp': '2025-09-10T13:00:00+05:30', 'qty_kg': '4.0'}"
+CK-001,USED_IN,DSH-005,"{'batch_id': 'BATCH-BUTTER-001', 'timestamp': '2025-09-10T13:00:00+05:30', 'qty_kg': '4.0'}"
+CK-002,USED_IN,DSH-006,"{'batch_id': 'BATCH-BUTTER-001', 'timestamp': '2025-09-10T12:50:00+05:30', 'qty_kg': '3.0'}"
+CK-004,USED_IN,DSH-006,"{'batch_id': 'BATCH-TOMATO-001', 'timestamp': '2025-09-10T12:45:00+05:30', 'qty_kg': '5.0'}"
+CK-002,USED_IN,DSH-006,"{'batch_id': 'BATCH-TOMATO-001', 'timestamp': '2025-09-10T12:45:00+05:30', 'qty_kg': '5.0'}"
+CK-004,USED_IN,DSH-006,"{'batch_id': 'BATCH-CREAM-001', 'timestamp': '2025-09-10T12:55:00+05:30', 'qty_kg': '2.0'}"
+CK-001,USED_IN,DSH-006,"{'batch_id': 'BATCH-BUTTER-001', 'timestamp': '2025-09-10T12:50:00+05:30', 'qty_kg': '3.0'}"
+CK-001,USED_IN,DSH-006,"{'batch_id': 'BATCH-CREAM-001', 'timestamp': '2025-09-10T12:55:00+05:30', 'qty_kg': '2.0'}"
+CK-004,USED_IN,DSH-007,"{'batch_id': 'BATCH-CHICKPEA-001', 'timestamp': '2025-09-10T12:30:00+05:30', 'qty_kg': '8.0'}"
+CK-004,USED_IN,DSH-007,"{'batch_id': 'BATCH-SPICE-001', 'timestamp': '2025-09-11T10:15:00+05:30', 'qty_kg': '1.0'}"
+CK-004,USED_IN,DSH-007,"{'batch_id': 'BATCH-TOMATO-001', 'timestamp': '2025-09-11T10:30:00+05:30', 'qty_kg': '6.0'}"
+CK-002,USED_IN,DSH-007,"{'batch_id': 'BATCH-TOMATO-001', 'timestamp': '2025-09-11T10:30:00+05:30', 'qty_kg': '6.0'}"
+CK-001,USED_IN,DSH-007,"{'batch_id': 'BATCH-SPICE-001', 'timestamp': '2025-09-11T10:15:00+05:30', 'qty_kg': '1.0'}"
+CK-001,USED_IN,DSH-008,"{'batch_id': 'BATCH-RICE-001', 'timestamp': '2025-09-10T12:15:00+05:30', 'qty_kg': '4.0'}"
+CK-003,USED_IN,DSH-008,"{'batch_id': 'BATCH-RICE-001', 'timestamp': '2025-09-10T12:15:00+05:30', 'qty_kg': '4.0'}"
+CK-005,USED_IN,DSH-009,"{'batch_id': 'BATCH-CHICKEN-001', 'timestamp': '2025-09-10T14:00:00+05:30', 'qty_kg': '6.0'}"
+CK-002,USED_IN,DSH-009,"{'batch_id': 'BATCH-CHICKEN-001', 'timestamp': '2025-09-10T14:00:00+05:30', 'qty_kg': '6.0'}"
+CK-003,USED_IN,DSH-010,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:15:00+05:30', 'qty_kg': '3.0'}"
+CK-002,USED_IN,DSH-010,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:15:00+05:30', 'qty_kg': '3.0'}"
+CK-001,USED_IN,DSH-010,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:15:00+05:30', 'qty_kg': '3.0'}"
+CK-005,USED_IN,DSH-010,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T19:30:00+05:30', 'qty_kg': '3.0'}"
+CK-001,USED_IN,DSH-010,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T19:30:00+05:30', 'qty_kg': '3.0'}"
+CK-005,USED_IN,DSH-010,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-11T09:15:00+05:30', 'qty_kg': '3.0'}"
+CK-002,USED_IN,DSH-010,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T19:30:00+05:30', 'qty_kg': '3.0'}"
+CK-003,USED_IN,DSH-010,"{'batch_id': 'BATCH-PANEER-001', 'timestamp': '2025-09-10T19:30:00+05:30', 'qty_kg': '3.0'}"
+ORD-1018,CONTAINS_DISH,DSH-001,{'quantity': '1'}
+ORD-1016,CONTAINS_DISH,DSH-001,{'quantity': '1'}
+ORD-1007,CONTAINS_DISH,DSH-001,{'quantity': '1'}
+ORD-1003,CONTAINS_DISH,DSH-001,{'quantity': '2'}
+ORD-1011,CONTAINS_DISH,DSH-001,{'quantity': '1'}
+ORD-1001,CONTAINS_DISH,DSH-001,{'quantity': '1'}
+ORD-1014,CONTAINS_DISH,DSH-002,{'quantity': '2'}
+ORD-1010,CONTAINS_DISH,DSH-002,{'quantity': '1'}
+ORD-1005,CONTAINS_DISH,DSH-002,{'quantity': '1'}
+ORD-1002,CONTAINS_DISH,DSH-002,{'quantity': '1'}
+ORD-1021,CONTAINS_DISH,DSH-003,{'quantity': '1'}
+ORD-1008,CONTAINS_DISH,DSH-003,{'quantity': '2'}
+ORD-1012,CONTAINS_DISH,DSH-003,{'quantity': '1'}
+ORD-1011,CONTAINS_DISH,DSH-004,{'quantity': '1'}
+ORD-1004,CONTAINS_DISH,DSH-004,{'quantity': '1'}
+ORD-1020,CONTAINS_DISH,DSH-004,{'quantity': '1'}
+ORD-1017,CONTAINS_DISH,DSH-005,{'quantity': '1'}
+ORD-1006,CONTAINS_DISH,DSH-005,{'quantity': '1'}
+ORD-1013,CONTAINS_DISH,DSH-006,{'quantity': '1'}
+ORD-1002,CONTAINS_DISH,DSH-006,{'quantity': '1'}
+ORD-1018,CONTAINS_DISH,DSH-007,{'quantity': '1'}
+ORD-1006,CONTAINS_DISH,DSH-007,{'quantity': '1'}
+ORD-1015,CONTAINS_DISH,DSH-007,{'quantity': '1'}
+ORD-1004,CONTAINS_DISH,DSH-008,{'quantity': '1'}
+ORD-1015,CONTAINS_DISH,DSH-008,{'quantity': '1'}
+ORD-1009,CONTAINS_DISH,DSH-008,{'quantity': '1'}
+ORD-1010,CONTAINS_DISH,DSH-009,{'quantity': '1'}
+ORD-1019,CONTAINS_DISH,DSH-009,{'quantity': '1'}
+ORD-1009,CONTAINS_DISH,DSH-010,{'quantity': '2'}
+ORD-1013,CONTAINS_DISH,DSH-010,{'quantity': '1'}
+ORD-1006,PLACED_AT,CK-001,{}
+ORD-1003,PLACED_AT,CK-001,{}
+ORD-1009,PLACED_AT,CK-001,{}
+ORD-1012,PLACED_AT,CK-001,{}
+ORD-1018,PLACED_AT,CK-002,{}
+ORD-1001,PLACED_AT,CK-002,{}
+ORD-1016,PLACED_AT,CK-002,{}
+ORD-1002,PLACED_AT,CK-002,{}
+ORD-1007,PLACED_AT,CK-002,{}
+ORD-1017,PLACED_AT,CK-002,{}
+ORD-1015,PLACED_AT,CK-002,{}
+ORD-1011,PLACED_AT,CK-002,{}
+ORD-1014,PLACED_AT,CK-003,{}
+ORD-1013,PLACED_AT,CK-003,{}
+ORD-1008,PLACED_AT,CK-003,{}
+ORD-1004,PLACED_AT,CK-003,{}
+ORD-1020,PLACED_AT,CK-004,{}
+ORD-1019,PLACED_AT,CK-005,{}
+ORD-1021,PLACED_AT,CK-005,{}
+ORD-1005,PLACED_AT,CK-005,{}
+ORD-1010,PLACED_AT,CK-005,{}
+CUS-001,PLACED_ORDER,ORD-1001,{}
+CUS-001,PLACED_ORDER,ORD-1013,{}
+CUS-002,PLACED_ORDER,ORD-1016,{}
+CUS-002,PLACED_ORDER,ORD-1002,{}
+CUS-003,PLACED_ORDER,ORD-1014,{}
+CUS-003,PLACED_ORDER,ORD-1003,{}
+CUS-004,PLACED_ORDER,ORD-1017,{}
+CUS-004,PLACED_ORDER,ORD-1004,{}
+CUS-005,PLACED_ORDER,ORD-1005,{}
+CUS-005,PLACED_ORDER,ORD-1015,{}
+CUS-006,PLACED_ORDER,ORD-1006,{}
+CUS-006,PLACED_ORDER,ORD-1018,{}
+CUS-007,PLACED_ORDER,ORD-1007,{}
+CUS-007,PLACED_ORDER,ORD-1021,{}
+CUS-008,PLACED_ORDER,ORD-1008,{}
+CUS-008,PLACED_ORDER,ORD-1019,{}
+CUS-009,PLACED_ORDER,ORD-1009,{}
+CUS-010,PLACED_ORDER,ORD-1010,{}
+CUS-010,PLACED_ORDER,ORD-1020,{}
+CUS-011,PLACED_ORDER,ORD-1011,{}
+CUS-012,PLACED_ORDER,ORD-1012,{}
+BATCH-PANEER-001,HAS_EVENT,EVT-af3dbe29-d9af-4093-928b-e6e54dcd6caf,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-9e2478ee-ef5b-4afb-a491-51e4f6b02f4a,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-84ba2dcc-cacd-402a-a7cb-67ae07c9fd2b,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-cf49e862-34b2-4016-a708-634bacf29d8b,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-5d7a2962-9d58-44f2-ae33-7b2371b62ba0,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-b6ff6e5c-ede5-4c4d-8b28-1dfbb8786825,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-07e88389-bbf6-4bcf-9a9c-03963a0ade87,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-fea64c1c-6a52-4f1b-afbf-8ad014929452,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-0e2b3f77-84e3-4e5d-8dfa-47027c2e79cb,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-95ed31ee-499e-4faf-8026-d70fc500ba39,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-6dcd8644-bec4-4d07-9445-c2f95ecc24bc,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-1168d3f2-e8cb-4cc0-895c-7904ecd08541,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-a7379cc1-2551-461f-b8df-a089c70e1cbb,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-f00e4630-274b-4548-9ac9-6bb384fd951b,{'source_label': 'Batch'}
+BATCH-CREAM-001,HAS_EVENT,EVT-cded0e07-ad2c-43bd-b801-06c168294d44,{'source_label': 'Batch'}
+BATCH-CREAM-001,HAS_EVENT,EVT-75142001-98ad-41fa-a9e4-ae4aa5763e95,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-acf1c77c-7630-4cfd-bb16-9a4d846cbe4a,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-91bf483c-35b6-4162-bf5c-9028cca6c013,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-a70fcff1-d532-483e-9aef-2be7f51037d0,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-f1719e5d-5890-4371-8069-7fa44a4dc743,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-5b730960-7a34-4e1e-bf76-f375aeb71bce,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-8e39f406-c7ef-4cff-a6c8-90caea55e059,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-e8bd2127-aa81-4395-a191-a1635043128d,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-1bad66dc-e20f-4575-afc9-abd9321cbba9,{'source_label': 'Batch'}
+BATCH-PANEER-001,HAS_EVENT,EVT-ba479bc4-1bb6-454a-95f0-8ca738d81649,{'source_label': 'Batch'}
+BATCH-CREAM-001,HAS_EVENT,EVT-dfa4ffcd-c9e0-4169-a1c2-d2fb3f3a21a3,{'source_label': 'Batch'}
+BATCH-CREAM-001,HAS_EVENT,EVT-73f44595-7274-40d4-ac1b-bcbad5fd9727,{'source_label': 'Batch'}
+BATCH-CREAM-001,HAS_EVENT,EVT-9a5c4a70-bf0b-42b7-84c4-79a5be7660b4,{'source_label': 'Batch'}
+BATCH-CREAM-001,HAS_EVENT,SEED-STATUS_TRANSITION-BATCH-CREAM-001,{'source_label': 'Batch'}
+CUS-001,NOTIFIED_FOR,ORD-1001,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-001,NOTIFIED_FOR,ORD-1013,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-002,NOTIFIED_FOR,ORD-1002,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-002,NOTIFIED_FOR,ORD-1016,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-003,NOTIFIED_FOR,ORD-1014,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-003,NOTIFIED_FOR,ORD-1003,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:59:18.740000+00:00'}"
+CUS-005,NOTIFIED_FOR,ORD-1005,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-006,NOTIFIED_FOR,ORD-1018,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-007,NOTIFIED_FOR,ORD-1007,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-007,NOTIFIED_FOR,ORD-1021,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-008,NOTIFIED_FOR,ORD-1008,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-009,NOTIFIED_FOR,ORD-1009,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-010,NOTIFIED_FOR,ORD-1010,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-011,NOTIFIED_FOR,ORD-1011,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"
+CUS-012,NOTIFIED_FOR,ORD-1012,"{'status': 'NOTIFIED', 'channel': 'SMS', 'notified_at': '2026-09-19T10:39:32.070000+00:00'}"

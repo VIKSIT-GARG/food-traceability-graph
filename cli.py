@@ -26,6 +26,7 @@ def main():
     rev = sub.add_parser("reverse")
     rev.add_argument("--customer"); rev.add_argument("--order"); rev.add_argument("--dish")
     sup = sub.add_parser("supplier"); sup.add_argument("supplier_id")
+    sub.add_parser("export-csv")
 
     args = p.parse_args()
 
@@ -68,6 +69,9 @@ def main():
                                           dish_id=args.dish), indent=2, default=str))
     elif args.cmd == "supplier":
         print(json.dumps(tr.supplier_intelligence(args.supplier_id), indent=2, default=str))
+    elif args.cmd == "export-csv":
+        from scripts.export_dataset_csv import main as run_export
+        run_export()
 
 
 if __name__ == "__main__":

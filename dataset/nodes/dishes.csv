@@ -1,0 +1,11 @@
+id,name,price,blocked
+DSH-001,Paneer Butter Masala,320.0,True
+DSH-002,Palak Paneer,290.0,True
+DSH-003,Paneer Tikka,340.0,True
+DSH-004,Chicken Biryani,380.0,False
+DSH-005,Butter Chicken,420.0,False
+DSH-006,Dal Makhani,240.0,True
+DSH-007,Chole Bhature,180.0,False
+DSH-008,Veg Hakka Noodles,220.0,False
+DSH-009,Chicken Tikka,360.0,False
+DSH-010,Paneer Kathi Roll,260.0,True
