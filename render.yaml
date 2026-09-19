@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: food-traceability-demo
+    runtime: python
+    plan: free
+    autoDeploy: true
+    buildCommand: pip install -r requirements-demo.txt
+    startCommand: python demo_server.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
