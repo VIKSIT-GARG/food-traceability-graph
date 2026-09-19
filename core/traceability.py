@@ -320,3 +320,54 @@ def recall_report(batch_id):
 
 def _iso_or_none(dt):
     return dt.isoformat() if dt is not None else None
+
+
+def supplier_intelligence(supplier_id):
+    """Aggregates supplier-level risk intelligence and downstream network impact."""
+    sup = get_supplier(supplier_id)
+    batches = run_query("""
+        MATCH (s:Supplier {id: $sid})-[:SUPPLIES]->(b:Batch)
+        OPTIONAL MATCH (b)-[dl:DELIVERED_TO]->(k:CloudKitchen)
+        RETURN b.id AS id, b.ingredientName AS ingredient, b.manufactureDate AS manufactured,
+               b.status AS status, count(dl) > 0 AS active
+        ORDER BY b.manufactureDate DESC
+    """, {"sid": supplier_id})
+    recalls = run_query("""
+        MATCH (s:Supplier {id: $sid})-[:SUPPLIES]->(b:Batch)
+        OPTIONAL MATCH (b)-[:HAS_EVENT]->(e:AuditEvent)
+        RETURN count(DISTINCT e) AS n
+    """, {"sid": supplier_id})[0]["n"]
+    net = run_query("""
+        MATCH (s:Supplier {id: $sid})-[:SUPPLIES]->(b:Batch)
+        OPTIONAL MATCH (b)-[:DELIVERED_TO]->(k:CloudKitchen)
+        OPTIONAL MATCH (k)-[u:USED_IN]->(d:Dish) WHERE u.batchId = b.id
+        OPTIONAL MATCH (o:Order)-[:PLACED_AT]->(k)
+        OPTIONAL MATCH (o)-[:CONTAINS_DISH]->(d)
+        OPTIONAL MATCH (c:Customer)-[:PLACED_ORDER]->(o)
+        RETURN count(DISTINCT k) AS kitchens,
+               count(DISTINCT d) AS dishes,
+               count(DISTINCT o) AS orders,
+               count(DISTINCT c) AS customers
+    """, {"sid": supplier_id})[0]
+    return {
+        "summary": {
+            "supplier": sup,
+            "total_batches": sup.get("total_batches", len(batches)),
+            "active_batches": sum(1 for b in batches if b["active"]),
+            "green": sup.get("green", 0),
+            "yellow": sup.get("yellow", 0),
+            "red": sup.get("red", 0),
+        },
+        "recall_events": recalls,
+        "network_impact": {
+            "kitchens": net["kitchens"],
+            "dishes": net["dishes"],
+            "orders": net["orders"],
+            "customers": net["customers"],
+        },
+        "batches": batches,
+    }
+
+
+# Backwards compatibility alias
+block_affected_dishes = pull_from_menu

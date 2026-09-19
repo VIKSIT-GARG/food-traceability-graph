@@ -14,7 +14,9 @@ def main():
     sub.add_parser("init-schema")
     sp = sub.add_parser("seed")
     sp.add_argument("--keep", action="store_true", help="do not clear existing data")
-    sub.add_parser("reset")
+    rst = sub.add_parser("reset")
+    rst.add_argument("--migrate", action="store_true", default=False, help="also run ps_migrate after seeding")
+    sub.add_parser("migrate")
     imp = sub.add_parser("impact"); imp.add_argument("batch_id"); imp.add_argument("--window", action="store_true")
     fl = sub.add_parser("flag"); fl.add_argument("batch_id")
     fl.add_argument("status", choices=["YELLOW", "RED", "GREEN"])
@@ -32,11 +34,19 @@ def main():
     elif args.cmd == "seed":
         stats = seed.seed(clear=not args.keep)
         print(json.dumps(stats, indent=2))
+    elif args.cmd == "migrate":
+        import ps_migrate
+        ps_migrate.run_migration()
+        print("Migration complete.")
     elif args.cmd == "reset":
         schema.init_schema()
         stats = seed.seed(clear=True)
         print(json.dumps(stats, indent=2))
         print("Graph reset and demo data seeded.")
+        if args.migrate:
+            import ps_migrate
+            ps_migrate.run_migration()
+            print("Migration applied.")
     elif args.cmd == "impact":
         report = tr.impact_report(args.batch_id, apply_window=True if args.window else None)
         print(json.dumps(report, indent=2, default=str))

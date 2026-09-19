@@ -253,13 +253,13 @@ async function doFlag(ev){
 async function quickAction(kind){
   const id=selected.id;
   const paths={contain:`/api/actions/contain/${encodeURIComponent(id)}?status=HOLD`,
-               block:`/api/actions/block/${encodeURIComponent(id)}`,
+               block:`/api/actions/pull-menu/${encodeURIComponent(id)}`,
                notify:`/api/actions/notify/${encodeURIComponent(id)}`};
   try{
     const r=await api(paths[kind],{method:'POST'});
-    if(kind==='contain') toast('HOLD applied: '+r.kitchens.join(', '),'ok');
-    if(kind==='block') toast('Blocked: '+r.dishes.join(', '),'ok');
-    if(kind==='notify') toast(r.orders_notified+' orders marked notified','ok');
+    if(kind==='contain') toast('HOLD applied: '+(r.kitchens||[]).join(', '),'ok');
+    if(kind==='block') toast('Pulled from menus: '+(r.pulled||r.dishes||[]).join(', '),'ok');
+    if(kind==='notify') toast((r.orders_notified||0)+' orders marked notified','ok');
     loadKpis();
   }catch(e){ toast(e.message,'err'); }
 }
@@ -270,6 +270,7 @@ function updateToolbar(){
   $('btn-up').disabled=!has; $('btn-down').disabled=!has;
   $('btn-expand').disabled=!has; $('btn-collapse').disabled=!has;
   $('btn-blast').disabled=!isBatch; $('btn-timeline').disabled=!isBatch;
+  if($('btn-pulllist')) $('btn-pulllist').disabled=!isBatch;
   $('btn-clearblast').disabled=!blast;
 }
 async function doTrace(dir){
@@ -311,6 +312,33 @@ async function showTimeline(){
         <span class="tl-chip">${esc(ev.kind)}</span><span>${esc(ev.label)}</span></div>`;
     }
     $('drawer-title').textContent='🕰 '+d.batch;
+    $('drawer-body').innerHTML=html;
+    $('drawer').classList.remove('hidden');
+  }catch(e){ toast(e.message,'err'); }
+}
+
+async function showPullList(){
+  if(!selected||selected.label!=='Batch') return;
+  try{
+    const d=await api(`/api/pull-list/${encodeURIComponent(selected.id)}`);
+    let html=`<p class="muted small">${esc(d.batch)} · Kitchen Pull List (Menu Blocking)</p>`;
+    if(!d.pull_list || d.pull_list.length===0){
+      html+=`<div class="empty" style="padding:1rem;color:#94a3b8">No kitchens or dishes currently flagged for this batch.</div>`;
+    } else {
+      for(const k of d.pull_list){
+        html+=`<div class="panel" style="margin-bottom:0.75rem;background:rgba(255,255,255,0.03);border:1px solid #334155;padding:0.75rem;border-radius:6px;">
+          <div style="font-weight:600;color:#38bdf8;font-size:0.95rem">${esc(k.kitchen)}</div>
+          <div class="muted small">${esc(k.location||'')}</div>
+          <div style="margin-top:0.4rem;font-size:0.85rem">
+            <b>Dishes to pull from menu:</b>
+            <ul style="padding-left:1.2rem;margin:0.25rem 0 0 0">
+              ${k.pull_dishes.map(dp=>`<li><b>${esc(dp.name)}</b> <span class="mono muted">(${esc(dp.id)})</span></li>`).join('')}
+            </ul>
+          </div>
+        </div>`;
+      }
+    }
+    $('drawer-title').textContent='📋 Pull List: '+d.batch;
     $('drawer-body').innerHTML=html;
     $('drawer').classList.remove('hidden');
   }catch(e){ toast(e.message,'err'); }
@@ -395,6 +423,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     runBlast(selected.id,true).catch(e=>toast(e.message,'err')); };
   $('btn-clearblast').onclick=clearBlast;
   $('btn-timeline').onclick=showTimeline;
+  if($('btn-pulllist')) $('btn-pulllist').onclick=showPullList;
   $('drawer-close').onclick=()=>$('drawer').classList.add('hidden');
   $('btn-layered').onclick=()=>applyLayeredLayout(true);
   $('btn-force').onclick=()=>cy.layout({name:'cose',animate:true,idealEdgeLength:110,

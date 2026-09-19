@@ -24,9 +24,15 @@ STEPS = [
      "CREATE INDEX usedin_batch IF NOT EXISTS FOR ()-[u:USED_IN]-() ON (u.batchId)"),
 ]
 
-if __name__ == "__main__":
+def run_migration():
     for name, q in STEPS:
         run_query(q)
         print("  ok:", name)
     rels = run_query("MATCH ()-[r]->() RETURN type(r) AS t, count(*) AS c ORDER BY c DESC")
-    print("Relationships now:", {r["t"]: r["c"] for r in rels})
+    rel_counts = {r["t"]: r["c"] for r in rels}
+    print("Relationships now:", rel_counts)
+    return rel_counts
+
+
+if __name__ == "__main__":
+    run_migration()
