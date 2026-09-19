@@ -1,0 +1,15 @@
+"""Central configuration loaded from environment / .env."""
+import os
+from datetime import timezone, timedelta
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "tracegraph")
+NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
+
+# All demo timestamps are IST so temporal comparisons stay consistent.
+IST = timezone(timedelta(hours=5, minutes=30))

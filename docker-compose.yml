@@ -1,0 +1,12 @@
+services:
+  neo4j:
+    image: neo4j:5.20
+    container_name: foodtrace-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/tracegraph
+    network_mode: host
+    volumes:
+      - neo4j_data:/data
+
+volumes:
+  neo4j_data:
