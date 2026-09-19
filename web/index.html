@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Food Traceability Graph — Recall Mission Control</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css"/>
 <link rel="stylesheet" href="/dashboard.css"/>
 <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
@@ -14,13 +14,17 @@
 
 <header id="topbar">
   <div class="brand">
-    <div class="logo">FG</div>
-    <div><h1>Food Traceability Graph</h1>
-    <p class="sub">(Supplier)-[:SUPPLIES]→(Batch)-[:DELIVERED_TO]→(Kitchen)-[:USED_IN]→(Dish)</p></div>
+    <div class="logo">
+      <span>FG</span>
+    </div>
+    <div>
+      <h1>Food Traceability Graph</h1>
+      <p class="sub">(Supplier)-[:SUPPLIES]→(Batch)-[:DELIVERED_TO]→(Kitchen)-[:USED_IN]→(Dish)</p>
+    </div>
   </div>
   <div class="viewtoggle">
-    <button class="viewbtn on" data-v="graph">🕸 Graph</button>
-    <button class="viewbtn" data-v="dash">📊 Dashboard</button>
+    <button class="viewbtn on" data-v="graph">🕸 Graph View</button>
+    <button class="viewbtn" data-v="dash">📊 Operations Dashboard</button>
   </div>
   <div id="kpis" class="kpis"></div>
   <div id="statuspill" class="pill ok">● BOOTING</div>
@@ -32,71 +36,128 @@
 <main id="layout">
   <aside id="sidebar">
     <div class="panel">
-      <h2>Search &amp; filters</h2>
+      <h2>Search &amp; Filters</h2>
       <input id="f-q" placeholder="🔍 batch / ingredient / supplier / kitchen"/>
       <label>Supplier</label><select id="f-supplier"><option value="(any)">(any)</option></select>
-      <label>Cloud kitchen</label><select id="f-kitchen"><option value="(any)">(any)</option></select>
+      <label>Cloud Kitchen</label><select id="f-kitchen"><option value="(any)">(any)</option></select>
       <label>Ingredient</label><select id="f-ingredient"><option value="(any)">(any)</option></select>
       <label>Location</label><select id="f-location"><option value="(any)">(any)</option></select>
       <div class="row2">
-        <div><label>Activity from</label><input type="date" id="f-from"/></div>
-        <div><label>to</label><input type="date" id="f-to"/></div>
+        <div><label>Activity From</label><input type="date" id="f-from"/></div>
+        <div><label>To</label><input type="date" id="f-to"/></div>
       </div>
-      <label class="lbl-top">Batch risk</label>
+      <label class="lbl-top">Batch Risk Level</label>
       <div class="statusrow">
-        <label class="chk"><input type="checkbox" id="f-green" checked/> 🟢</label>
-        <label class="chk"><input type="checkbox" id="f-yellow" checked/> 🟡</label>
-        <label class="chk"><input type="checkbox" id="f-red" checked/> 🔴</label>
+        <label class="chk"><input type="checkbox" id="f-green" checked/> 🟢 Clear</label>
+        <label class="chk"><input type="checkbox" id="f-yellow" checked/> 🟡 Suspect</label>
+        <label class="chk"><input type="checkbox" id="f-red" checked/> 🔴 Recall</label>
       </div>
       <label class="chk" style="margin:8px 0">
         <input type="checkbox" id="f-orders"/> Include orders &amp; customers</label>
-      <button id="btn-apply" class="btn primary wide">Apply filters</button>
-      <button id="btn-resetnet" class="btn wide">Reset network</button>
+      <button id="btn-apply" class="btn primary wide">Apply Filters</button>
+      <button id="btn-resetnet" class="btn wide">Reset Network</button>
       <p id="nodecount" class="muted small"></p>
     </div>
     <div class="panel">
-      <h2>Model</h2>
-      <p class="muted small">Click any node → its full downstream path lights up instantly
-      (shift-click = upstream). Select a <b>Supplier</b> or <b>Batch</b> to flag contamination,
-      simulate recall impact, and pull dishes from menus per kitchen.</p>
+      <h2>Traceability Model</h2>
+      <p class="muted small">Click any node → its downstream corridor illuminates instantly
+      (Shift-click for upstream origin). Select a <b>Supplier</b> or <b>Batch</b> to evaluate risk,
+      detonate recall blast radius, and quarantine menu items per kitchen.</p>
     </div>
   </aside>
 
   <section id="stage">
-    <div id="cmdbar">
-      <span class="modebtns">
-        <button id="m-cmd" class="modebtn on">⌘ Commands</button>
-        <button id="m-cy" class="modebtn">&gt;_ Cypher</button>
-      </span>
-      <input id="cmd" autocomplete="off"
-             placeholder='contaminated · trace BATCH-PANEER-001 · pull list · supplier Gopal · paneer · clear'/>
-      <button id="cmd-go" class="btn primary">Run</button>
-    </div>
-    <div id="cmdchips"></div>
     <div id="toolbar">
-      <button id="btn-up" class="btn" disabled>⬆ Upstream</button>
+      <button id="btn-up" class="btn" disabled>⬆ Upstream Trace</button>
       <button id="btn-expand" class="btn" disabled>➕ Expand</button>
       <button id="btn-collapse" class="btn" disabled>➖ Collapse</button>
       <span class="sep"></span>
-      <button id="btn-blast" class="btn danger" disabled>💥 Recall impact</button>
-      <button id="btn-clearblast" class="btn" disabled>✖ Clear sim</button>
+      <button id="btn-blast" class="btn danger" disabled>💥 Recall Impact</button>
+      <button id="btn-clearblast" class="btn" disabled>✖ Clear Blast</button>
       <button id="btn-timeline" class="btn" disabled>🕰 Timeline</button>
-      <button id="btn-pulllist" class="btn" disabled>📋 Pull list</button>
+      <button id="btn-pulllist" class="btn" disabled>📋 Pull List</button>
       <span class="sep"></span>
       <button id="btn-layered" class="btn">▦ Topological</button>
-      <button id="btn-fit" class="btn">⤢ Fit</button>
+      <button id="btn-fit" class="btn">⤢ Fit Viewport</button>
     </div>
+
     <div id="cy"><div id="tip"></div></div>
+
     <div id="legend">
-      <span><i class="dot" style="background:#a78bfa"></i>Supplier</span>
-      <span><i class="dot" style="background:#10b981"></i>Batch 🟢</span>
-      <span><i class="dot" style="background:#f59e0b"></i>Batch 🟡</span>
-      <span><i class="dot" style="background:#ef4444"></i>Batch 🔴</span>
-      <span><i class="dot" style="background:#38bdf8"></i>Kitchen</span>
-      <span><i class="dot" style="background:#fbbf24"></i>Dish</span>
-      <span><i class="dot blastdot"></i>💥 blast radius</span>
-      <span><i class="dot tracedot"></i>traced path</span>
+      <span><i class="dot" style="background:#8b5cf6"></i>Supplier</span>
+      <span><i class="dot" style="background:#059669"></i>Batch 🟢</span>
+      <span><i class="dot" style="background:#d97706"></i>Batch 🟡</span>
+      <span><i class="dot" style="background:#dc2626"></i>Batch 🔴</span>
+      <span><i class="dot" style="background:#0284c7"></i>Kitchen</span>
+      <span><i class="dot" style="background:#f59e0b"></i>Dish</span>
+      <span><i class="dot blastdot"></i>💥 Recall Blast</span>
+      <span><i class="dot tracedot"></i>Traced Corridor</span>
     </div>
+
+    <!-- FULLY FLEDGED BOTTOM QUERY CONSOLE -->
+    <section id="query-console" class="query-console">
+      <div class="qc-topbar">
+        <div class="qc-title-group">
+          <span class="qc-badge">&gt;_</span>
+          <span class="qc-heading">Query &amp; Cypher Console</span>
+          <div class="modebtns">
+            <button id="m-cy" class="modebtn on">&gt;_ Cypher Engine</button>
+            <button id="m-cmd" class="modebtn">⌘ Commands</button>
+          </div>
+        </div>
+
+        <div class="qc-center-group">
+          <label class="qc-preset-lbl">Preset Query:</label>
+          <select id="qc-presets" class="qc-select">
+            <option value="">-- Choose High-Impact Query --</option>
+            <option value="paneer_recall">1. Paneer Recall Corridor (Farm to Kitchen to Dish)</option>
+            <option value="red_kitchens">2. Cloud Kitchens Holding RED Batches</option>
+            <option value="affected_orders">3. Orders in Contamination Window with Customer Contact</option>
+            <option value="supplier_risk">4. Supplier Risk Scoreboard &amp; Recall History</option>
+            <option value="blocked_menu">5. Active Menu-Blocked Quarantine Items</option>
+            <option value="all_flagged">6. All Flagged Batches &amp; Suppliers</option>
+          </select>
+          <span id="qc-status" class="qc-status-pill">Ready</span>
+        </div>
+
+        <div class="qc-right-actions">
+          <button id="qc-btn-sync" class="btn mini" title="Synchronize returned nodes into graph view">🕸 Sync Graph</button>
+          <button id="qc-toggle-size" class="btn mini" title="Toggle Console Height">⤢ Resize</button>
+        </div>
+      </div>
+
+      <div class="qc-workspace">
+        <div class="qc-editor-pane">
+          <div class="qc-textarea-wrap">
+            <textarea id="cmd" rows="3" spellcheck="false" autocomplete="off"
+              placeholder="MATCH (b:Batch)-[:DELIVERED_TO]->(k:CloudKitchen) RETURN b.id, b.status, k.name LIMIT 20"></textarea>
+          </div>
+          <div class="qc-editor-footer">
+            <div id="cmdchips" class="qc-chips"></div>
+            <div class="qc-exec-group">
+              <span class="qc-hint">Ctrl+Enter to run</span>
+              <button id="cmd-go" class="btn primary">▶ Execute Query</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="qc-results-pane">
+          <div class="qc-results-bar">
+            <span id="qc-results-count" class="qc-results-count">Results (0 rows)</span>
+            <div class="qc-results-buttons">
+              <button id="qc-export-json" class="btn mini" style="display:none">JSON</button>
+              <button id="qc-export-csv" class="btn mini" style="display:none">CSV</button>
+              <button id="qc-clear-results" class="btn mini">Clear</button>
+            </div>
+          </div>
+          <div id="qc-results-view" class="qc-results-view">
+            <div class="qc-empty-state">
+              <span>Execute a query or pick a preset above. Rows and graph paths will appear here.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </section>
 
   <aside id="inspector"><div id="insp-body"></div></aside>
@@ -105,20 +166,22 @@
 <!-- ================= DASHBOARD VIEW ================= -->
 <section id="dash">
   <div id="dash-scroll">
-    <div class="dhead"><h1>📊 Operations Dashboard</h1>
-      <span class="muted small">live from the graph — same data, operational face</span></div>
+    <div class="dhead">
+      <h1>📊 Operations Dashboard</h1>
+      <span class="muted small">Live supply-chain telemetry from Neo4j knowledge graph</span>
+    </div>
     <div id="d-hero" class="hero"></div>
-    <h2 class="dsec">🚨 Contamination watchlist</h2>
+    <h2 class="dsec">🚨 Contamination Watchlist</h2>
     <div id="d-watch" class="watch"></div>
     <div class="dcols">
       <div class="dcol">
-        <h2 class="dsec">📋 Pull list <span class="muted" id="d-focus"></span></h2>
+        <h2 class="dsec">📋 Kitchen Pull List <span class="muted" id="d-focus"></span></h2>
         <div id="d-pull"></div>
-        <h2 class="dsec">📜 Audit trail</h2>
+        <h2 class="dsec">📜 Supply-Chain Audit Trail</h2>
         <div id="d-audit"></div>
       </div>
       <div class="dcol">
-        <h2 class="dsec">📨 Customer outreach</h2>
+        <h2 class="dsec">📨 Customer Safety Outreach</h2>
         <div id="d-outreach"></div>
       </div>
     </div>
@@ -127,7 +190,7 @@
 
 <div id="drawer" class="hidden">
   <div class="drawer-head">
-    <h2 id="drawer-title">🕰 Timeline</h2>
+    <h2 id="drawer-title">🕰 Incident Timeline</h2>
     <button id="drawer-close" class="btn">✕ Close</button>
   </div>
   <div id="drawer-body"></div>

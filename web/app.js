@@ -15,30 +15,30 @@ const LAYERS = ['Supplier', 'Batch', 'Facility', 'CloudKitchen', 'Dish', 'Order'
 const LAYER_INDEX = Object.fromEntries(LAYERS.map((l, i) => [l, i]));
 
 const NODE_PALETTE = {
-  Supplier: '#a78bfa',      // Soft Lavender / Violet
+  Supplier: '#8b5cf6',      // Noble Violet / Farm Origin
   Batch: {
-    GREEN: '#10b981',       // Emerald
-    YELLOW: '#f59e0b',      // Warm Amber
-    RED: '#ef4444',         // Vivid Crimson
+    GREEN: '#059669',       // Fresh Sage / Verified Safe
+    YELLOW: '#d97706',      // Spiced Turmeric / Quarantine Alert
+    RED: '#dc2626',         // Cardinal Crimson / Biohazard Recall
   },
-  Facility: '#64748b',      // Slate
-  CloudKitchen: '#38bdf8',  // Sky Cyan
-  Dish: '#fbbf24',          // Culinary Gold
-  Order: '#14b8a6',         // Dispatch Teal
-  Customer: '#f43f5e',      // Rose Red
+  Facility: '#64748b',      // Cool Steel
+  CloudKitchen: '#0284c7',  // Mediterranean Deep Azure / Central Hub
+  Dish: '#f59e0b',          // Culinary Saffron Gold
+  Order: '#0d9488',         // Dispatch Spruce Teal
+  Customer: '#e11d48',      // Consumer Protection Coral
 };
 
 const EDGE_COLORS = {
-  SUPPLIES: '#a78bfa',
-  DELIVERED_TO: '#38bdf8',
-  USED_IN: '#fbbf24',
-  CONTAINS_DISH: '#14b8a6',
-  PLACED_AT: '#60a5fa',
-  PLACED_ORDER: '#f43f5e',
+  SUPPLIES: '#8b5cf6',
+  DELIVERED_TO: '#0284c7',
+  USED_IN: '#f59e0b',
+  CONTAINS_DISH: '#0d9488',
+  PLACED_AT: '#3b82f6',
+  PLACED_ORDER: '#e11d48',
   PROCESSED_AT: '#64748b',
-  MENU_BLOCKED: '#ef4444',
-  HAS_EVENT: '#e2e8f0',
-  NOTIFIED_FOR: '#10b981',
+  MENU_BLOCKED: '#dc2626',
+  HAS_EVENT: '#94a3b8',
+  NOTIFIED_FOR: '#059669',
 };
 
 // -----------------------------------------------------------------------------
@@ -398,8 +398,8 @@ function initCytoscape() {
         selector: 'edge[type = "MENU_BLOCKED"]',
         style: {
           'line-style': 'dashed',
-          'line-color': '#ef4444',
-          'target-arrow-color': '#ef4444',
+          'line-color': '#dc2626',
+          'target-arrow-color': '#dc2626',
           'width': 2.5,
         }
       },
@@ -408,10 +408,10 @@ function initCytoscape() {
         selector: 'node:selected, node.selected',
         style: {
           'border-width': 4,
-          'border-color': '#00f2fe',
+          'border-color': '#38bdf8',
           'shadow-blur': 18,
-          'shadow-color': '#00f2fe',
-          'shadow-opacity': 0.8,
+          'shadow-color': '#38bdf8',
+          'shadow-opacity': 0.85,
         }
       },
       // Traced Path Highlighting
@@ -419,18 +419,18 @@ function initCytoscape() {
         selector: 'node.traced',
         style: {
           'border-width': 4,
-          'border-color': '#f59e0b',
+          'border-color': '#d97706',
           'shadow-blur': 16,
-          'shadow-color': '#f59e0b',
-          'shadow-opacity': 0.8,
+          'shadow-color': '#d97706',
+          'shadow-opacity': 0.85,
           'opacity': 1,
         }
       },
       {
         selector: 'edge.traced',
         style: {
-          'line-color': '#f59e0b',
-          'target-arrow-color': '#f59e0b',
+          'line-color': '#d97706',
+          'target-arrow-color': '#d97706',
           'width': 3.5,
           'opacity': 1,
         }
@@ -440,9 +440,9 @@ function initCytoscape() {
         selector: 'node.blast-zone',
         style: {
           'border-width': 4,
-          'border-color': '#ef4444',
+          'border-color': '#dc2626',
           'shadow-blur': 22,
-          'shadow-color': '#ef4444',
+          'shadow-color': '#dc2626',
           'shadow-opacity': 0.9,
           'opacity': 1,
         }
@@ -450,8 +450,8 @@ function initCytoscape() {
       {
         selector: 'edge.blast-zone',
         style: {
-          'line-color': '#ef4444',
-          'target-arrow-color': '#ef4444',
+          'line-color': '#dc2626',
+          'target-arrow-color': '#dc2626',
           'width': 3.8,
           'opacity': 1,
         }
@@ -1251,17 +1251,24 @@ function focusPullList(batchId) {
   renderDashboard();
 }
 
-function focusOnGraph(label, id) {
+function focusOnGraph(labelOrId, maybeId) {
+  const id = maybeId ? maybeId : labelOrId;
   setView('graph');
   setTimeout(() => {
+    if (!cy) return;
     const node = cy.getElementById(id);
     if (node.length) {
+      const label = maybeId ? labelOrId : (node.data('label') || 'Node');
       cy.elements().removeClass('selected');
       node.addClass('selected');
       selectedNode = { id, label, props: node.data('props') || {} };
+      updateToolbarState();
       renderInspector(selectedNode);
       traceCorridor(label, id, 'down');
       cy.animate({ center: { eles: node }, zoom: 1.4, duration: 400 });
+      toast(`Focused on [${label}] ${id}`, 'info');
+    } else {
+      toast(`Node ${id} is not visible in current filter. Reset filters to view all.`, 'warn');
     }
   }, 100);
 }
@@ -1278,43 +1285,90 @@ function triggerBlastAndSwitch(batchId) {
 }
 
 // -----------------------------------------------------------------------------
-// Command Bar (⌘ Commands + >_ Cypher Console)
+// Bottom Query Console & Cypher Engine Workstation
 // -----------------------------------------------------------------------------
-function initCommandBar() {
+let lastQueryResult = null;
+
+const PRESET_QUERIES = {
+  paneer_recall: {
+    mode: 'cy',
+    title: 'Paneer Recall Corridor (Farm to Kitchen to Dish)',
+    code: `MATCH (s:Supplier)-[:SUPPLIES]->(b:Batch {id: "BATCH-PANEER-001"})-[:DELIVERED_TO]->(k:CloudKitchen)-[:USED_IN]->(d:Dish)
+RETURN s.name AS Supplier, b.id AS Batch, b.status AS Status, k.name AS Kitchen, d.name AS Dish LIMIT 25`
+  },
+  red_kitchens: {
+    mode: 'cy',
+    title: 'Cloud Kitchens Holding RED Batches',
+    code: `MATCH (b:Batch)-[:DELIVERED_TO]->(k:CloudKitchen)
+WHERE b.status = 'RED'
+RETURN b.id AS Batch, b.ingredientName AS Ingredient, k.id AS KitchenID, k.name AS Kitchen, k.location AS Location LIMIT 25`
+  },
+  affected_orders: {
+    mode: 'cy',
+    title: 'Orders in Contamination Window with Customer Contact',
+    code: `MATCH (b:Batch {id: "BATCH-PANEER-001"})-[:DELIVERED_TO]->(k:CloudKitchen)-[:USED_IN]->(d:Dish)<-[:CONTAINS_DISH]-(o:Order)<-[:PLACED_ORDER]-(c:Customer)
+RETURN o.id AS OrderID, d.name AS Dish, k.name AS Kitchen, c.id AS CustomerID, c.name AS Customer, c.phone AS Contact LIMIT 30`
+  },
+  supplier_risk: {
+    mode: 'cy',
+    title: 'Supplier Risk Scoreboard & Recall History',
+    code: `MATCH (s:Supplier)-[:SUPPLIES]->(b:Batch)
+RETURN s.id AS SupplierID, s.name AS Supplier, s.location AS Location, count(b) AS TotalBatches,
+       sum(CASE WHEN b.status = 'RED' THEN 1 ELSE 0 END) AS RedBatches,
+       sum(CASE WHEN b.status = 'YELLOW' THEN 1 ELSE 0 END) AS YellowBatches,
+       sum(CASE WHEN b.status = 'GREEN' THEN 1 ELSE 0 END) AS SafeBatches`
+  },
+  blocked_menu: {
+    mode: 'cy',
+    title: 'Active Menu-Blocked Quarantine Items',
+    code: `MATCH (d:Dish)
+WHERE d.blocked = true
+RETURN d.id AS DishID, d.name AS Dish, d.price AS Price, d.blocked AS QuarantineBlocked`
+  },
+  all_flagged: {
+    mode: 'cy',
+    title: 'All Flagged Batches & Suppliers',
+    code: `MATCH (s:Supplier)-[:SUPPLIES]->(b:Batch)
+WHERE b.status IN ['RED', 'YELLOW']
+RETURN b.id AS BatchID, b.ingredientName AS Ingredient, b.status AS RiskLevel, s.id AS SupplierID, s.name AS Supplier, b.statusReason AS IncidentReason LIMIT 25`
+  }
+};
+
+function setConsoleMode(mode) {
+  cmdMode = mode;
   const mCmd = $('m-cmd');
   const mCy = $('m-cy');
   const cmdInput = $('cmd');
-  const cmdGo = $('cmd-go');
-  const cmdChips = $('cmdchips');
 
   if (mCmd && mCy) {
-    mCmd.onclick = () => {
-      cmdMode = 'cmd';
-      mCmd.classList.add('on');
-      mCy.classList.remove('on');
-      cmdInput.placeholder = 'contaminated · trace BATCH-PANEER-001 · pull list · supplier Gopal · paneer · clear';
-      renderCommandChips();
-    };
-
-    mCy.onclick = () => {
-      cmdMode = 'cy';
-      mCy.classList.add('on');
-      mCmd.classList.remove('on');
-      cmdInput.placeholder = 'MATCH (b:Batch)-[:DELIVERED_TO]->(k) RETURN b.id, k.name LIMIT 20';
-      renderCommandChips();
-    };
+    mCmd.classList.toggle('on', mode === 'cmd');
+    mCy.classList.toggle('on', mode === 'cy');
   }
 
-  if (cmdGo && cmdInput) {
-    cmdGo.onclick = () => executeCommand(cmdInput.value.trim());
-    cmdInput.onkeydown = (e) => {
-      if (e.key === 'Enter') {
-        executeCommand(cmdInput.value.trim());
-      }
-    };
+  if (cmdInput) {
+    cmdInput.placeholder = mode === 'cy'
+      ? 'MATCH (b:Batch)-[:DELIVERED_TO]->(k:CloudKitchen) RETURN b.id, b.status, k.name LIMIT 20'
+      : 'contaminated · trace BATCH-PANEER-001 · blast BATCH-PANEER-001 · pull list · clear';
   }
 
   renderCommandChips();
+}
+
+function setModeAndRun(mode, code) {
+  setConsoleMode(mode);
+  const input = $('cmd');
+  if (input) {
+    input.value = code;
+  }
+  executeCommand(code);
+}
+
+function setAndRunCommand(str) {
+  const input = $('cmd');
+  if (input) {
+    input.value = str;
+  }
+  executeCommand(str);
 }
 
 function renderCommandChips() {
@@ -1322,66 +1376,369 @@ function renderCommandChips() {
   if (!chipsEl) return;
 
   const chips = cmdMode === 'cmd' ? [
-    'contaminated',
-    'trace BATCH-PANEER-001',
-    'pull list',
-    'supplier Gopal',
-    'paneer',
-    'orders on',
-    'clear',
-    'reset'
+    { label: 'contaminated', run: 'contaminated' },
+    { label: 'trace BATCH-PANEER-001', run: 'trace BATCH-PANEER-001' },
+    { label: 'blast BATCH-PANEER-001', run: 'blast BATCH-PANEER-001' },
+    { label: 'pull list', run: 'pull list' },
+    { label: 'supplier Gopal', run: 'supplier Gopal' },
+    { label: 'orders on', run: 'orders on' },
+    { label: 'clear', run: 'clear' },
+    { label: 'reset', run: 'reset' }
   ] : [
-    'MATCH (b:Batch) RETURN b.id, b.status LIMIT 10',
-    'MATCH (s:Supplier)-[:SUPPLIES]->(b) RETURN s.name, b.id',
-    'MATCH (k:CloudKitchen)-[:USED_IN]->(d:Dish) RETURN k.name, d.name LIMIT 10'
+    { label: '⚡ Paneer Corridor', preset: 'paneer_recall' },
+    { label: '🔴 Kitchens with RED Stock', preset: 'red_kitchens' },
+    { label: '👤 Exposed Customers', preset: 'affected_orders' },
+    { label: '📊 Supplier Risk Scoreboard', preset: 'supplier_risk' },
+    { label: '🚫 Menu Quarantine', preset: 'blocked_menu' }
   ];
 
-  chipsEl.innerHTML = chips.map(c => `
-    <span class="cchip" onclick="setAndRunCommand('${c.replace(/'/g, "\\'")}')">${c}</span>
-  `).join('');
+  chipsEl.innerHTML = chips.map(c => {
+    if (c.preset) {
+      return `<span class="cchip" onclick="applyPreset('${c.preset}')">${c.label}</span>`;
+    }
+    return `<span class="cchip" onclick="setAndRunCommand('${c.run.replace(/'/g, "\\'")}')">${c.label}</span>`;
+  }).join('');
 }
 
-function setAndRunCommand(str) {
-  const input = $('cmd');
-  if (input) {
-    input.value = str;
-    executeCommand(str);
+function applyPreset(presetKey) {
+  const p = PRESET_QUERIES[presetKey];
+  if (!p) return;
+  const select = $('qc-presets');
+  if (select) select.value = presetKey;
+  setModeAndRun(p.mode, p.code);
+}
+
+function renderQueryResultsTable(columns, rows, executionMs, summaryText) {
+  const countEl = $('qc-results-count');
+  const viewEl = $('qc-results-view');
+  const btnJson = $('qc-export-json');
+  const btnCsv = $('qc-export-csv');
+
+  if (!viewEl) return;
+
+  const msStr = executionMs !== undefined ? ` in ${Math.round(executionMs)}ms` : '';
+  if (countEl) {
+    countEl.textContent = `${rows ? rows.length : 0} rows${msStr}`;
   }
+
+  if (btnJson) btnJson.style.display = (rows && rows.length > 0) ? 'inline-flex' : 'none';
+  if (btnCsv) btnCsv.style.display = (rows && rows.length > 0) ? 'inline-flex' : 'none';
+
+  if (!rows || rows.length === 0) {
+    viewEl.innerHTML = `
+      <div class="qc-empty-state">
+        <div>
+          <p style="color:var(--txt-bright);font-weight:600;margin-bottom:4px">No records returned</p>
+          <p class="muted small">${summaryText || `Query completed${msStr} with 0 matching rows.`}</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  function formatCell(val) {
+    if (val === null || val === undefined) return '<span class="muted">—</span>';
+    const s = String(val);
+    if (/^(BATCH|CK|DISH|ORD|CUST|SUP|FAC|FARM)-/i.test(s) || (cy && cy.getElementById(s).length > 0)) {
+      return `<span class="qc-node-link" onclick="focusOnGraph('${s}')" title="Click to view and trace on graph">${s}</span>`;
+    }
+    if (s === 'RED') return `<span class="tag red">🔴 RED</span>`;
+    if (s === 'YELLOW') return `<span class="tag yellow">🟡 YELLOW</span>`;
+    if (s === 'GREEN') return `<span class="tag green">🟢 GREEN</span>`;
+    if (s === 'QUARANTINED' || s === 'PULLED') return `<span class="tag red">QUARANTINED</span>`;
+    if (s === 'PENDING') return `<span class="tag yellow">PENDING</span>`;
+    return s;
+  }
+
+  viewEl.innerHTML = `
+    <table class="qc-results-table">
+      <thead>
+        <tr>
+          <th style="width:36px;text-align:center">#</th>
+          ${columns.map(c => `<th>${c}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row, idx) => `
+          <tr>
+            <td class="muted" style="font-size:10px;text-align:center">${idx + 1}</td>
+            ${row.map(cell => `<td>${formatCell(cell)}</td>`).join('')}
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function syncQueryNodesToGraph() {
+  if (!lastQueryResult || !lastQueryResult.nodes || lastQueryResult.nodes.length === 0) {
+    toast('No graph nodes in last query result to synchronize', 'warn');
+    return;
+  }
+
+  const newNodes = [];
+  const existingNodeIds = new Set(cy.nodes().map(n => n.id()));
+
+  lastQueryResult.nodes.forEach(n => {
+    if (!existingNodeIds.has(n.id)) {
+      const size = n.label === 'Supplier' ? 42 :
+                   n.label === 'Batch' ? 38 :
+                   n.label === 'CloudKitchen' ? 36 :
+                   n.label === 'Dish' ? 32 : 28;
+      newNodes.push({
+        group: 'nodes',
+        data: {
+          id: n.id,
+          label: n.label,
+          labelText: getNodeLabel(n.label, n.props),
+          bg: getNodeColor(n.label, n.props),
+          size,
+          props: n.props || {}
+        }
+      });
+      existingNodeIds.add(n.id);
+    }
+  });
+
+  const newEdges = [];
+  const existingEdgeIds = new Set(cy.edges().map(e => e.id()));
+
+  (lastQueryResult.edges || []).forEach(e => {
+    const edgeId = `${e.source}_${e.type}_${e.target}`;
+    if (existingNodeIds.has(e.source) && existingNodeIds.has(e.target) && !existingEdgeIds.has(edgeId)) {
+      newEdges.push({
+        group: 'edges',
+        data: {
+          id: edgeId,
+          source: e.source,
+          target: e.target,
+          type: e.type,
+          edgeColor: EDGE_COLORS[e.type] || 'rgba(148, 163, 184, 0.4)',
+          props: e.props || []
+        }
+      });
+      existingEdgeIds.add(edgeId);
+    }
+  });
+
+  if (newNodes.length > 0 || newEdges.length > 0) {
+    cy.add([...newNodes, ...newEdges]);
+    applyTopologicalLayout(false);
+    toast(`Added ${newNodes.length} nodes & ${newEdges.length} relationships to graph view`, 'ok');
+  } else {
+    toast('All query nodes and edges are already present in graph', 'info');
+  }
+
+  // Highlight query nodes
+  const nodeIdsToHighlight = lastQueryResult.nodes.map(n => n.id);
+  cy.elements().removeClass('selected traced');
+  nodeIdsToHighlight.forEach(id => {
+    const el = cy.getElementById(id);
+    if (el.length) el.addClass('traced');
+  });
+}
+
+function exportQueryResultCsv() {
+  if (!lastQueryResult || !lastQueryResult.columns || !lastQueryResult.rows) {
+    toast('No active query results to export', 'warn');
+    return;
+  }
+  const { columns, rows } = lastQueryResult;
+  const csvRows = [];
+  csvRows.push(columns.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','));
+  rows.forEach(r => {
+    csvRows.push(r.map(cell => `"${String(cell !== null && cell !== undefined ? cell : '').replace(/"/g, '""')}"`).join(','));
+  });
+  const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `foodtrace_query_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Exported CSV dataset', 'ok');
+}
+
+function exportQueryResultJson() {
+  if (!lastQueryResult) {
+    toast('No active query results to export', 'warn');
+    return;
+  }
+  const blob = new Blob([JSON.stringify(lastQueryResult, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `foodtrace_query_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Exported JSON dataset', 'ok');
+}
+
+function initCommandBar() {
+  const mCmd = $('m-cmd');
+  const mCy = $('m-cy');
+  const cmdInput = $('cmd');
+  const cmdGo = $('cmd-go');
+  const presetSelect = $('qc-presets');
+  const btnSync = $('qc-btn-sync');
+  const btnSize = $('qc-toggle-size');
+  const btnJson = $('qc-export-json');
+  const btnCsv = $('qc-export-csv');
+  const btnClear = $('qc-clear-results');
+
+  if (mCmd && mCy) {
+    mCmd.onclick = () => setConsoleMode('cmd');
+    mCy.onclick = () => setConsoleMode('cy');
+  }
+
+  if (cmdGo && cmdInput) {
+    cmdGo.onclick = () => executeCommand(cmdInput.value.trim());
+    cmdInput.onkeydown = (e) => {
+      // Ctrl+Enter or Cmd+Enter executes in both modes
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        executeCommand(cmdInput.value.trim());
+      } else if (e.key === 'Enter' && cmdMode === 'cmd' && !e.shiftKey) {
+        e.preventDefault();
+        executeCommand(cmdInput.value.trim());
+      }
+    };
+  }
+
+  if (presetSelect) {
+    presetSelect.onchange = () => {
+      const val = presetSelect.value;
+      if (val) applyPreset(val);
+    };
+  }
+
+  if (btnSync) {
+    btnSync.onclick = () => syncQueryNodesToGraph();
+  }
+
+  if (btnSize) {
+    btnSize.onclick = () => {
+      const qc = $('query-console');
+      if (!qc) return;
+      if (qc.classList.contains('expanded')) {
+        qc.classList.remove('expanded');
+        qc.classList.add('collapsed');
+        btnSize.textContent = '⤢ Restore';
+      } else if (qc.classList.contains('collapsed')) {
+        qc.classList.remove('collapsed');
+        btnSize.textContent = '⤢ Resize';
+      } else {
+        qc.classList.add('expanded');
+        btnSize.textContent = '_ Minimize';
+      }
+      if (cy) {
+        setTimeout(() => { cy.resize(); }, 150);
+      }
+    };
+  }
+
+  if (btnJson) btnJson.onclick = () => exportQueryResultJson();
+  if (btnCsv) btnCsv.onclick = () => exportQueryResultCsv();
+  if (btnClear) {
+    btnClear.onclick = () => {
+      lastQueryResult = null;
+      renderQueryResultsTable([], [], 0, 'Results cleared by operator.');
+      if ($('qc-status')) $('qc-status').textContent = 'Ready';
+      if (cmdInput) cmdInput.value = '';
+    };
+  }
+
+  renderCommandChips();
 }
 
 async function executeCommand(cmd) {
   if (!cmd) return;
 
+  const statusPill = $('qc-status');
+
   if (cmdMode === 'cy') {
     // Cypher Console Mode
+    if (statusPill) {
+      statusPill.textContent = 'Executing Cypher...';
+      statusPill.className = 'qc-status-pill';
+      statusPill.style.color = '#38bdf8';
+      statusPill.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+    }
+
+    const t0 = performance.now();
     try {
-      toast('Executing Cypher query...', 'info');
       const res = await api('/api/query/cypher', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: cmd })
       });
 
-      if (res.nodes && res.nodes.length > 0) {
-        // Merge nodes/edges into cytoscape
-        cy.add(res.nodes.map(n => ({
-          group: 'nodes',
-          data: {
-            id: n.id,
-            label: n.label,
-            labelText: getNodeLabel(n.label, n.props),
-            bg: getNodeColor(n.label, n.props),
-            size: 32,
-            props: n.props || {}
-          }
-        })));
-        applyTopologicalLayout(false);
+      const t1 = performance.now();
+      const duration = t1 - t0;
+      lastQueryResult = res;
+
+      if (statusPill) {
+        statusPill.textContent = `${res.rows?.length || 0} rows in ${Math.round(duration)}ms`;
+        statusPill.style.color = '#6ee7b7';
+        statusPill.style.borderColor = 'rgba(16, 185, 129, 0.4)';
       }
 
-      openDrawer(`>_ Cypher Results (${res.rows?.length || 0} rows)`, renderCypherTable(res));
-      toast(`Query executed successfully (${res.rows?.length || 0} rows)`, 'ok');
+      renderQueryResultsTable(res.columns || [], res.rows || [], duration, res.query);
+
+      if (res.nodes && res.nodes.length > 0) {
+        toast(`Query returned ${res.rows?.length || 0} rows & ${res.nodes.length} nodes (use '🕸 Sync Graph' to map on canvas)`, 'ok');
+      } else {
+        toast(`Query executed successfully (${res.rows?.length || 0} rows in ${Math.round(duration)}ms)`, 'ok');
+      }
     } catch (e) {
-      toast(e.message, 'err');
+      const t1 = performance.now();
+      const duration = t1 - t0;
+      if (statusPill) {
+        statusPill.textContent = 'Error';
+        statusPill.style.color = '#f87171';
+        statusPill.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+      }
+
+      const viewEl = $('qc-results-view');
+      const is501 = e.message && (e.message.includes('501') || e.message.includes('Not Implemented'));
+
+      if (is501) {
+        if (viewEl) {
+          viewEl.innerHTML = `
+            <div class="qc-empty-state" style="flex-direction:column;gap:10px;text-align:left;padding:24px">
+              <div style="display:flex;align-items:center;gap:8px;color:#f59e0b">
+                <span style="font-size:16px">ℹ</span>
+                <b style="font-size:13px">Neo4j Direct Cypher Engine Notice</b>
+              </div>
+              <p style="color:var(--txt-base);font-size:12px;line-height:1.5;max-width:580px">
+                Direct arbitrary Cypher execution requires live Neo4j. In standalone demo mode, you can run all mission-critical supply-chain graph queries via Commands mode:
+              </p>
+              <div style="background:rgba(0,0,0,0.35);padding:10px 14px;border-radius:6px;border:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap">
+                <span class="cchip" onclick="setModeAndRun('cmd', 'contaminated')">contaminated</span>
+                <span class="cchip" onclick="setModeAndRun('cmd', 'trace BATCH-PANEER-001')">trace BATCH-PANEER-001</span>
+                <span class="cchip" onclick="setModeAndRun('cmd', 'blast BATCH-PANEER-001')">blast BATCH-PANEER-001</span>
+                <span class="cchip" onclick="setModeAndRun('cmd', 'pull list')">pull list</span>
+              </div>
+            </div>
+          `;
+        }
+        toast('Cypher console requires live Neo4j; use Commands mode for instant recall queries', 'warn');
+      } else {
+        if (viewEl) {
+          viewEl.innerHTML = `
+            <div class="qc-empty-state" style="flex-direction:column;gap:10px;text-align:left;padding:20px;color:#fca5a5">
+              <div style="display:flex;align-items:center;gap:8px;color:#ef4444">
+                <span style="font-size:16px">⚠️</span>
+                <b style="font-size:13px">Query Execution Error / Rejected by Guardrails</b>
+              </div>
+              <div style="background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.3);padding:10px 14px;border-radius:6px;font-family:var(--font-mono);font-size:11.5px;max-width:650px;line-height:1.5;color:#fee2e2">
+                ${e.message}
+              </div>
+            </div>
+          `;
+        }
+        toast(e.message, 'err');
+      }
     }
     return;
   }
@@ -1391,77 +1748,136 @@ async function executeCommand(cmd) {
   const verb = parts[0].toLowerCase();
   const arg = parts.slice(1).join(' ').trim();
 
-  if (verb === 'contaminated' || verb === 'watchlist' || verb === 'recall') {
-    runContaminationMap();
-  } else if (verb === 'trace') {
-    if (parts[1] && parts[1].toLowerCase() === 'up') {
-      const targetId = parts[2] || (selectedNode ? selectedNode.id : null);
-      if (targetId) traceCorridor('Batch', targetId, 'up');
-      else toast('Specify node ID: trace up <ID>', 'warn');
-    } else {
-      const targetId = arg || (selectedNode ? selectedNode.id : null);
-      if (targetId) traceCorridor('Batch', targetId, 'down');
-      else toast('Specify node ID: trace <ID>', 'warn');
-    }
-  } else if (verb === 'blast' || verb === 'impact') {
-    const targetId = arg || (selectedNode ? selectedNode.id : 'BATCH-PANEER-001');
-    runBlast(targetId);
-  } else if (verb === 'pull' || verb === 'pulllist') {
-    const targetId = arg || (selectedNode ? selectedNode.id : (activeWatchBatch || 'BATCH-PANEER-001'));
-    openDrawer(`Kitchen Pull List (${targetId})`, await fetchPullListHtml(targetId));
-  } else if (verb === 'timeline') {
-    const targetId = arg || (selectedNode ? selectedNode.id : 'BATCH-PANEER-001');
-    openBatchTimeline(targetId);
-  } else if (verb === 'report' || verb === 'fssai') {
-    const targetId = arg || (selectedNode ? selectedNode.id : 'BATCH-PANEER-001');
-    openRecallReport(targetId);
-  } else if (verb === 'clear') {
-    clearSelection();
-    clearBlast();
-    toast('Simulation cleared', 'info');
-  } else if (verb === 'reset') {
-    resetNetwork();
-  } else if (verb === 'supplier') {
-    $('f-supplier').value = arg || '(any)';
-    loadNetwork().catch(e => toast(e.message, 'err'));
-  } else if (verb === 'kitchen') {
-    $('f-kitchen').value = arg || '(any)';
-    loadNetwork().catch(e => toast(e.message, 'err'));
-  } else if (verb === 'orders') {
-    $('f-orders').checked = arg.toLowerCase() === 'on';
-    loadNetwork().catch(e => toast(e.message, 'err'));
-  } else {
-    // Default search in f-q
-    $('f-q').value = cmd;
-    loadNetwork().catch(e => toast(e.message, 'err'));
+  if (statusPill) {
+    statusPill.textContent = `Running: ${verb}`;
+    statusPill.style.color = '#38bdf8';
   }
-}
 
-function renderCypherTable(res) {
-  const cols = res.columns || [];
-  const rows = res.rows || [];
+  const t0 = performance.now();
 
-  return `
-    <div style="font-family:var(--font-mono);font-size:12px">
-      <div style="background:rgba(0,0,0,0.3);padding:8px 12px;border-radius:6px;margin-bottom:12px;color:var(--txt-muted)">
-        ${res.query}
-      </div>
-      <table style="width:100%;border-collapse:collapse">
-        <thead>
-          <tr>
-            ${cols.map(c => `<th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--panel-border);color:var(--cyan-neon)">${c}</th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(row => `
-            <tr>
-              ${row.map(cell => `<td style="padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.05)">${cell}</td>`).join('')}
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
+  try {
+    if (verb === 'contaminated' || verb === 'watchlist' || verb === 'recall') {
+      runContaminationMap();
+      const contamData = await api('/api/contamination');
+      const flagged = contamData.flagged || [];
+      const columns = ['Batch ID', 'Status', 'Ingredient', 'Affected Kitchens', 'Dishes', 'Orders', 'Consumers', 'Incident Reason'];
+      const rows = flagged.map(f => [
+        f.id,
+        f.status,
+        f.ingredient || f.name || '—',
+        f.affected_kitchens || f.kitchens || 0,
+        f.affected_dishes || f.dishes || 0,
+        f.affected_orders || f.orders || 0,
+        f.affected_customers || f.customers || 0,
+        f.reason || 'Flagged contaminated'
+      ]);
+      const duration = performance.now() - t0;
+      lastQueryResult = { columns, rows };
+      renderQueryResultsTable(columns, rows, duration, 'Contamination Watchlist active');
+      if (statusPill) statusPill.textContent = `${rows.length} flagged batches`;
+    } else if (verb === 'trace') {
+      const isUp = parts[1] && parts[1].toLowerCase() === 'up';
+      const targetId = isUp ? (parts[2] || selectedNode?.id) : (arg || selectedNode?.id || 'BATCH-PANEER-001');
+      const dir = isUp ? 'up' : 'down';
+
+      if (!targetId) {
+        toast('Specify node ID: trace <ID> or select a node', 'warn');
+        return;
+      }
+
+      const label = (selectedNode && selectedNode.id === targetId) ? selectedNode.label : 'Batch';
+      traceCorridor(label, targetId, dir);
+
+      const traceData = await api(`/api/trace?label=${encodeURIComponent(label)}&id=${encodeURIComponent(targetId)}&direction=${dir}`);
+      const pathNodes = traceData.nodes || [];
+      const columns = ['Hop', 'Entity ID', 'Type', 'Name / Identification', 'Key Properties'];
+      const rows = pathNodes.map((n, i) => [
+        i + 1,
+        n.id,
+        n.label,
+        n.props?.name || n.props?.ingredientName || n.id,
+        Object.entries(n.props || {}).filter(([k]) => !['id','name','ingredientName'].includes(k)).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—'
+      ]);
+      const duration = performance.now() - t0;
+      lastQueryResult = { columns, rows, nodes: pathNodes, edges: traceData.edges || [] };
+      renderQueryResultsTable(columns, rows, duration, `Traced ${dir} corridor for ${targetId}`);
+      if (statusPill) statusPill.textContent = `${rows.length} path entities`;
+    } else if (verb === 'blast' || verb === 'impact') {
+      const targetId = arg || (selectedNode ? selectedNode.id : 'BATCH-PANEER-001');
+      runBlast(targetId);
+      const bData = await api(`/api/blast/${encodeURIComponent(targetId)}`);
+      const imp = bData.counts || {};
+      const columns = ['Impact Category', 'Exposure Count', 'Containment & Recall Protocol'];
+      const rows = [
+        ['Affected Cloud Kitchens', imp.kitchens || 0, 'Quarantine physical inventory batches in storage locker'],
+        ['Blocked Menu Items (Dishes)', imp.dishes || 0, 'Automated menu blacklist on delivery aggregators'],
+        ['Customer Orders Impacted', imp.orders || 0, 'FoSCoS digital recall compliance audit logging'],
+        ['Direct Consumers Exposed', imp.customers || 0, 'SMS & mobile push health alert dispatch']
+      ];
+      const duration = performance.now() - t0;
+      lastQueryResult = { columns, rows };
+      renderQueryResultsTable(columns, rows, duration, `Recall Blast Radius for ${targetId}`);
+      if (statusPill) statusPill.textContent = `Blast: ${targetId}`;
+    } else if (verb === 'pull' || verb === 'pulllist') {
+      const targetId = arg || (selectedNode ? selectedNode.id : (activeWatchBatch || 'BATCH-PANEER-001'));
+      const pullData = await api(`/api/pull-list/${encodeURIComponent(targetId)}`);
+      const list = pullData.pull_list || [];
+      const columns = ['Kitchen', 'Location', 'Quarantine Dishes', 'Containment Status'];
+      const rows = list.map(k => [
+        k.kitchen,
+        k.location || 'Delhi NCR',
+        (k.pull_dishes || []).map(d => d.name).join(', '),
+        k.pulled ? 'QUARANTINED' : 'PENDING'
+      ]);
+      const duration = performance.now() - t0;
+      lastQueryResult = { columns, rows };
+      renderQueryResultsTable(columns, rows, duration, `Kitchen Pull List for ${targetId}`);
+      if (statusPill) statusPill.textContent = `${rows.length} kitchens`;
+      openDrawer(`Kitchen Pull List (${targetId})`, await fetchPullListHtml(targetId));
+    } else if (verb === 'timeline') {
+      const targetId = arg || (selectedNode ? selectedNode.id : 'BATCH-PANEER-001');
+      openBatchTimeline(targetId);
+      const tlData = await api(`/api/timeline/${encodeURIComponent(targetId)}`);
+      const events = tlData.events || [];
+      const columns = ['Timestamp', 'Event Type', 'Incident Detail'];
+      const rows = events.map(e => [fmtDate(e.time), e.event, e.detail || '—']);
+      const duration = performance.now() - t0;
+      lastQueryResult = { columns, rows };
+      renderQueryResultsTable(columns, rows, duration, `Incident Timeline: ${targetId}`);
+    } else if (verb === 'report' || verb === 'fssai') {
+      const targetId = arg || (selectedNode ? selectedNode.id : 'BATCH-PANEER-001');
+      openRecallReport(targetId);
+    } else if (verb === 'clear') {
+      clearSelection();
+      clearBlast();
+      renderQueryResultsTable([], [], 0, 'Simulation cleared.');
+      if (statusPill) statusPill.textContent = 'Cleared';
+      toast('Simulation and highlights cleared', 'info');
+    } else if (verb === 'reset') {
+      resetNetwork();
+      renderQueryResultsTable([], [], 0, 'Network reset to default state.');
+      if (statusPill) statusPill.textContent = 'Ready';
+    } else if (verb === 'supplier') {
+      $('f-supplier').value = arg || '(any)';
+      await loadNetwork();
+      toast(`Filtered by supplier: ${arg || 'all'}`, 'ok');
+    } else if (verb === 'kitchen') {
+      $('f-kitchen').value = arg || '(any)';
+      await loadNetwork();
+      toast(`Filtered by kitchen: ${arg || 'all'}`, 'ok');
+    } else if (verb === 'orders') {
+      $('f-orders').checked = arg.toLowerCase() === 'on';
+      await loadNetwork();
+      toast(`Orders & customer layer ${$('f-orders').checked ? 'enabled' : 'disabled'}`, 'ok');
+    } else {
+      $('f-q').value = cmd;
+      await loadNetwork();
+      toast(`Search applied: ${cmd}`, 'ok');
+    }
+  } catch (e) {
+    if (statusPill) statusPill.textContent = 'Error';
+    toast(e.message, 'err');
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -1714,3 +2130,9 @@ window.focusPullList = focusPullList;
 window.focusOnGraph = focusOnGraph;
 window.triggerBlastAndSwitch = triggerBlastAndSwitch;
 window.setAndRunCommand = setAndRunCommand;
+window.setModeAndRun = setModeAndRun;
+window.applyPreset = applyPreset;
+window.syncQueryNodesToGraph = syncQueryNodesToGraph;
+window.exportQueryResultCsv = exportQueryResultCsv;
+window.exportQueryResultJson = exportQueryResultJson;
+window.executeCommand = executeCommand;
