@@ -366,6 +366,24 @@ def v1_timeline(batch_id: str):
     return timeline(batch_id)
 
 
+@app.get("/api/audit")
+@app.get("/api/audit/{batch_id}")
+def get_audit(batch_id: Optional[str] = None, limit: int = 50):
+    if batch_id:
+        return _jsonify(risk.audit_trail(batch_id))
+    rows = run_query("""
+        MATCH (e:AuditEvent)
+        OPTIONAL MATCH (n)-[:HAS_EVENT]->(e)
+        RETURN e.id AS id, e.type AS type, e.detail AS detail, e.actor AS actor,
+               e.timestamp AS timestamp, coalesce(e.fromStatus, '') AS fromStatus,
+               coalesce(e.toStatus, '') AS toStatus, coalesce(e.reason, '') AS reason,
+               coalesce(n.id, '') AS entity
+        ORDER BY e.timestamp DESC
+        LIMIT $lim
+    """, {"lim": limit})
+    return _jsonify(rows)
+
+
 @app.get("/batches/{batch_id}/audit")
 def audit(batch_id: str):
     return _jsonify(risk.audit_trail(batch_id))

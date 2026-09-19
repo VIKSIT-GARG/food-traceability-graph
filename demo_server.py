@@ -835,6 +835,17 @@ def pull_list(batch_id: str, window: Literal["auto", "on", "off"] = "auto"):
         raise HTTPException(404, str(e))
 
 
+@app.get("/api/audit")
+@app.get("/api/audit/{batch_id}")
+def get_audit(batch_id: Optional[str] = None, limit: int = 50):
+    with G.lock:
+        if batch_id:
+            return J(G.audit_trail(batch_id))
+        events = [dict(x["props"]) for x in G.N.values() if x["label"] == "AuditEvent"]
+        events.sort(key=lambda x: str(x.get("timestamp") or ""), reverse=True)
+        return J(events[:limit])
+
+
 @app.get("/api/timeline/{batch_id}")
 def timeline(batch_id: str):
     try:

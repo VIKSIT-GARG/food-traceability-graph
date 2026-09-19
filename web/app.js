@@ -1,1142 +1,1716 @@
-'use strict';
-
 /**
- * TRACE-NCR // RECALL MISSION CONTROL
- * Tactical Supply-Chain Graph Explorer & Recall Engine
+ * Food Traceability Graph — Recall Mission Control
+ * Frontend Application Engine (Graph View + Operations Dashboard + Command Bar)
  */
 
+'use strict';
+
+// -----------------------------------------------------------------------------
+// DOM Selectors & Utilities
+// -----------------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
+const $$ = (sel) => document.querySelectorAll(sel);
 
-// Topological Layout Hierarchy & Palette
-const LAYERS = ['Supplier', 'Facility', 'Batch', 'CloudKitchen', 'Dish', 'Order', 'Customer'];
-const LX = Object.fromEntries(LAYERS.map((l, i) => [l, i]));
+const LAYERS = ['Supplier', 'Batch', 'Facility', 'CloudKitchen', 'Dish', 'Order', 'Customer'];
+const LAYER_INDEX = Object.fromEntries(LAYERS.map((l, i) => [l, i]));
 
-const NODE_COLORS = {
-  Supplier: '#8b5cf6',      // Hyper Violet
-  Facility: '#64748b',      // Industrial Slate
-  CloudKitchen: '#0ea5e9',  // Hub Cyan
-  Dish: '#f59e0b',          // Culinary Gold
+const NODE_PALETTE = {
+  Supplier: '#a78bfa',      // Soft Lavender / Violet
+  Batch: {
+    GREEN: '#10b981',       // Emerald
+    YELLOW: '#f59e0b',      // Warm Amber
+    RED: '#ef4444',         // Vivid Crimson
+  },
+  Facility: '#64748b',      // Slate
+  CloudKitchen: '#38bdf8',  // Sky Cyan
+  Dish: '#fbbf24',          // Culinary Gold
   Order: '#14b8a6',         // Dispatch Teal
-  Customer: '#f43f5e',      // Consumer Rose
+  Customer: '#f43f5e',      // Rose Red
 };
 
-const STATUS_COLORS = {
-  GREEN: '#10b981',
-  YELLOW: '#f59e0b',
-  RED: '#ff2d55',
+const EDGE_COLORS = {
+  SUPPLIES: '#a78bfa',
+  DELIVERED_TO: '#38bdf8',
+  USED_IN: '#fbbf24',
+  CONTAINS_DISH: '#14b8a6',
+  PLACED_AT: '#60a5fa',
+  PLACED_ORDER: '#f43f5e',
+  PROCESSED_AT: '#64748b',
+  MENU_BLOCKED: '#ef4444',
+  HAS_EVENT: '#e2e8f0',
+  NOTIFIED_FOR: '#10b981',
 };
 
-const STATUS_EMOJI = {
-  GREEN: '🟢',
-  YELLOW: '🟡',
-  RED: '🔴',
-};
-
-const TRANSITIONS = {
-  GREEN: ['YELLOW'],
-  YELLOW: ['RED', 'GREEN'],
-  RED: [],
-};
-
+// -----------------------------------------------------------------------------
 // Application State
+// -----------------------------------------------------------------------------
 let cy = null;
-let selected = null;
-let blast = null;
-let hlNodes = new Set();
-let hlEdgeKeys = new Set();
-let activeDrawerTab = 'timeline';
+let currentView = 'graph';      // 'graph' | 'dash'
+let cmdMode = 'cmd';           // 'cmd' | 'cy'
+let selectedNode = null;       // { id, label, props }
+let blastState = null;         // { batch, counts, nodes: Set, edges: Set }
+let activeTrace = null;        // { nodes: Set, edges: Set, direction }
+let activeWatchBatch = null;   // Active batch ID focused in dashboard
+let rawGraphData = { nodes: [], edges: [] };
 
-/* --------------------------------------------------------------------------
-   API & Helper Functions
-   -------------------------------------------------------------------------- */
-async function api(path, opts = {}) {
-  const r = await fetch(path, opts);
-  if (!r.ok) {
-    let m = r.statusText;
+// -----------------------------------------------------------------------------
+// API Client
+// -----------------------------------------------------------------------------
+async function api(url, options = {}) {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    let detail = res.statusText;
     try {
-      const err = await r.json();
-      m = err.detail || m;
+      const body = await res.json();
+      detail = body.detail || body.message || JSON.stringify(body);
     } catch (e) {}
-    throw new Error(m);
+    throw new Error(detail);
   }
-  return r.json();
+  return res.json();
 }
 
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
-}[c]));
-
-const r1 = (n) => Math.round(n * 10) / 10;
-
-function fmtDate(s) {
-  if (!s) return '—';
-  const d = new Date(s);
-  if (isNaN(d)) return String(s);
-  return d.toLocaleString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  }) + ' IST';
-}
-
-function fmtVal(v) {
-  return (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) ? fmtDate(v) : String(v);
-}
-
-function toast(msg, kind = 'ok') {
-  const existing = document.querySelectorAll('.toast');
-  existing.forEach((t) => t.remove());
-  const t = document.createElement('div');
-  t.className = 'toast ' + kind;
-  const icon = kind === 'ok' ? '✓' : kind === 'err' ? '✕' : '⚠';
-  t.innerHTML = `<span>${icon}</span> ${esc(msg)}`;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3200);
-}
-
-function edgeLabel(type, props) {
-  if (type === 'DELIVERED_TO') {
-    const q = props.reduce((a, p) => a + (p.qtyKg || 0), 0);
-    const t = props.find((p) => p.deliveryDate)?.deliveryDate;
-    return `${r1(q)} kg${t ? ' · ' + fmtDate(t) : ''}`;
+function toast(msg, type = 'info') {
+  let container = $('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.style.cssText = `
+      position: fixed; top: 78px; right: 24px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    `;
+    document.body.appendChild(container);
   }
-  if (type === 'USED_IN') {
-    const q = props.reduce((a, p) => a + (p.qtyKg || p.quantity || 0), 0);
-    const ts = props.map((p) => p.timestamp).filter(Boolean).sort();
-    return ts.length ? `${r1(q)} kg @ ${fmtDate(ts[ts.length - 1])}` : `${r1(q)} kg`;
-  }
-  if (type === 'CONTAINS_DISH') {
-    return `×${r1(props.reduce((a, p) => a + (p.quantity || 0), 0))}`;
-  }
-  if (type === 'PROCESSED_AT') {
-    const t = props.find((p) => p.timestamp)?.timestamp;
-    return t ? fmtDate(t) : 'PROCESSED';
-  }
-  if (type === 'SUPPLIES' || type === 'SUPPLIED') return 'SUPPLIES';
-  if (type === 'PLACED_AT') return 'DISPATCHED_AT';
-  if (type === 'PLACED_ORDER') return 'ORDERED';
-  return type;
+
+  const el = document.createElement('div');
+  const bg = type === 'err' ? 'rgba(239, 68, 68, 0.92)' :
+             type === 'warn' ? 'rgba(245, 158, 11, 0.92)' :
+             type === 'ok' ? 'rgba(16, 185, 129, 0.92)' : 'rgba(15, 23, 42, 0.92)';
+
+  el.style.cssText = `
+    background: ${bg}; color: #ffffff; padding: 10px 16px; border-radius: 8px;
+    font-family: var(--font-sans, sans-serif); font-size: 12.5px; font-weight: 600;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5); pointer-events: auto;
+    border: 1px solid rgba(255,255,255,0.15); animation: toast-in 0.2s ease-out;
+  `;
+  el.textContent = msg;
+  container.appendChild(el);
+
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-6px)';
+    el.style.transition = 'all 0.25s ease';
+    setTimeout(() => el.remove(), 250);
+  }, 4000);
 }
 
-function nodeColor(label, props) {
-  return label === 'Batch'
-    ? (STATUS_COLORS[props.status] || '#64748b')
-    : (NODE_COLORS[label] || '#64748b');
+function fmtDate(d) {
+  if (!d) return '—';
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return String(d);
+    return dt.toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    });
+  } catch (e) {
+    return String(d);
+  }
 }
 
-function nodeLabelText(label, props) {
+// -----------------------------------------------------------------------------
+// View Switching
+// -----------------------------------------------------------------------------
+function setView(viewName) {
+  currentView = viewName;
+  document.body.setAttribute('data-view', viewName);
+
+  $$('.viewbtn').forEach(btn => {
+    btn.classList.toggle('on', btn.getAttribute('data-v') === viewName);
+  });
+
+  if (viewName === 'dash') {
+    renderDashboard().catch(e => toast(e.message, 'err'));
+  } else if (viewName === 'graph' && cy) {
+    setTimeout(() => {
+      cy.resize();
+      cy.fit(undefined, 40);
+    }, 50);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// KPIs & Header Telemetry
+// -----------------------------------------------------------------------------
+async function refreshTelemetry() {
+  try {
+    const kpis = await api('/api/kpis');
+    const counts = kpis.counts || {};
+    const flagged = kpis.flagged || [];
+    const blocked = kpis.blocked_menu_items || kpis.blocked_dishes || 0;
+    const holds = kpis.kitchen_holds || 0;
+
+    let redCount = 0;
+    let yellowCount = 0;
+    flagged.forEach(f => {
+      if (f.status === 'RED') redCount++;
+      else if (f.status === 'YELLOW') yellowCount++;
+    });
+
+    const kpisEl = $('kpis');
+    if (kpisEl) {
+      kpisEl.innerHTML = `
+        <span class="kchip" title="Total active batches">Batches <b>${counts.Batch || 0}</b></span>
+        <span class="kchip" title="Cloud kitchens in NCR">Kitchens <b>${counts.CloudKitchen || 0}</b></span>
+        <span class="kchip" title="Dishes across menus">Dishes <b>${counts.Dish || 0}</b></span>
+        ${redCount > 0 ? `<span class="kchip flag" title="Critical Contaminated Batches">🔴 <b>${redCount} RED</b></span>` : ''}
+        ${yellowCount > 0 ? `<span class="kchip flag yellow" title="Batches Under Investigation">🟡 <b>${yellowCount} YELLOW</b></span>` : ''}
+        ${blocked > 0 ? `<span class="kchip flag" title="Dishes pulled from menus">🚫 <b>${blocked} pulled</b></span>` : ''}
+        ${holds > 0 ? `<span class="kchip flag yellow" title="Kitchen inventory on hold">⚠️ <b>${holds} holds</b></span>` : ''}
+      `;
+    }
+
+    const pill = $('statuspill');
+    if (pill) {
+      if (redCount > 0) {
+        pill.className = 'pill bad';
+        pill.textContent = `● RECALL ACTIVE (${redCount})`;
+      } else if (yellowCount > 0) {
+        pill.className = 'pill warn';
+        pill.textContent = `● INVESTIGATION (${yellowCount})`;
+      } else {
+        pill.className = 'pill ok';
+        pill.textContent = '● ALL SYSTEMS CLEAR';
+      }
+    }
+
+    const banner = $('recallbanner');
+    if (banner) {
+      if (redCount > 0 || yellowCount > 0) {
+        banner.className = 'banner';
+        banner.innerHTML = `
+          <div style="display:flex;align-items:center;gap:12px;flex:1">
+            <span style="font-size:18px">🚨</span>
+            <div>
+              <b>CONTAMINATION EVENT DETECTED</b> —
+              <span>${redCount} Confirmed Contaminated (RED), ${yellowCount} Suspect (YELLOW) item(s).</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn danger" id="banner-blast">💥 Recall Impact</button>
+            <button class="btn" id="banner-dash">📋 Open Dashboard</button>
+            <button class="btn" id="banner-dismiss" style="padding:4px 8px">✕</button>
+          </div>
+        `;
+        $('banner-blast').onclick = () => runContaminationMap();
+        $('banner-dash').onclick = () => setView('dash');
+        $('banner-dismiss').onclick = () => banner.classList.add('hidden');
+      } else {
+        banner.className = 'banner hidden';
+        banner.innerHTML = '';
+      }
+    }
+
+    return { counts, flagged, blocked, holds, redCount, yellowCount };
+  } catch (e) {
+    console.error('Failed to refresh telemetry:', e);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Filter Dock & Network Loading
+// -----------------------------------------------------------------------------
+async function initFilters() {
+  try {
+    const opts = await api('/api/filters');
+    populateSelect('f-supplier', opts.suppliers, 'id', 'name');
+    populateSelect('f-kitchen', opts.kitchens, 'id', 'name');
+    populateSelect('f-ingredient', opts.ingredients);
+    populateSelect('f-location', opts.locations);
+  } catch (e) {
+    console.error('Filters init error:', e);
+  }
+}
+
+function populateSelect(id, items, valKey, labelKey) {
+  const el = $(id);
+  if (!el) return;
+  el.innerHTML = '<option value="(any)">(any)</option>';
+  (items || []).forEach(item => {
+    const opt = document.createElement('option');
+    if (typeof item === 'string') {
+      opt.value = item;
+      opt.textContent = item;
+    } else {
+      opt.value = item[valKey];
+      opt.textContent = item[labelKey] || item[valKey];
+    }
+    el.appendChild(opt);
+  });
+}
+
+function getFilterParams() {
+  const params = new URLSearchParams();
+  const q = $('f-q')?.value.trim();
+  if (q) params.set('q', q);
+
+  const sup = $('f-supplier')?.value;
+  if (sup && sup !== '(any)') params.set('supplier', sup);
+
+  const kit = $('f-kitchen')?.value;
+  if (kit && kit !== '(any)') params.set('kitchen', kit);
+
+  const ing = $('f-ingredient')?.value;
+  if (ing && ing !== '(any)') params.set('ingredient', ing);
+
+  const loc = $('f-location')?.value;
+  if (loc && loc !== '(any)') params.set('location', loc);
+
+  const dFrom = $('f-from')?.value;
+  if (dFrom) params.set('date_from', dFrom);
+
+  const dTo = $('f-to')?.value;
+  if (dTo) params.set('date_to', dTo);
+
+  const statuses = [];
+  if ($('f-green')?.checked) statuses.push('GREEN');
+  if ($('f-yellow')?.checked) statuses.push('YELLOW');
+  if ($('f-red')?.checked) statuses.push('RED');
+
+  statuses.forEach(s => params.append('statuses', s));
+
+  if ($('f-orders')?.checked) {
+    params.set('include_orders', 'true');
+  }
+
+  return params;
+}
+
+async function loadNetwork() {
+  const params = getFilterParams();
+  const url = `/api/network?${params.toString()}`;
+  const data = await api(url);
+  rawGraphData = data;
+  renderCytoscape(data);
+
+  const countEl = $('nodecount');
+  if (countEl) {
+    countEl.textContent = `${data.nodes?.length || 0} nodes · ${data.edges?.length || 0} relationships`;
+  }
+}
+
+function resetNetwork() {
+  if ($('f-q')) $('f-q').value = '';
+  if ($('f-supplier')) $('f-supplier').value = '(any)';
+  if ($('f-kitchen')) $('f-kitchen').value = '(any)';
+  if ($('f-ingredient')) $('f-ingredient').value = '(any)';
+  if ($('f-location')) $('f-location').value = '(any)';
+  if ($('f-from')) $('f-from').value = '';
+  if ($('f-to')) $('f-to').value = '';
+  if ($('f-green')) $('f-green').checked = true;
+  if ($('f-yellow')) $('f-yellow').checked = true;
+  if ($('f-red')) $('f-red').checked = true;
+  if ($('f-orders')) $('f-orders').checked = false;
+
+  clearSelection();
+  clearBlast();
+  loadNetwork().catch(e => toast(e.message, 'err'));
+}
+
+// -----------------------------------------------------------------------------
+// Cytoscape Initialization & Graph Rendering
+// -----------------------------------------------------------------------------
+function getNodeColor(label, props = {}) {
   if (label === 'Batch') {
-    return `${props.id}\n${props.ingredientName || ''} ${STATUS_EMOJI[props.status] || ''}`;
+    return NODE_PALETTE.Batch[props.status] || '#10b981';
   }
-  if (label === 'Supplier' || label === 'CloudKitchen') {
-    return `${props.name || props.id}\n(${props.location ? props.location.split(',')[0] : ''})`;
-  }
-  return props.name || props.id;
+  return NODE_PALETTE[label] || '#94a3b8';
 }
 
-/* --------------------------------------------------------------------------
-   Cytoscape Topological Engine
-   -------------------------------------------------------------------------- */
-function initCy() {
+function getNodeLabel(label, props = {}) {
+  if (label === 'Batch') {
+    const icon = props.status === 'RED' ? '🔴' : props.status === 'YELLOW' ? '🟡' : '🟢';
+    return `${icon} ${props.id || 'Batch'}\n${props.ingredientName || ''}`;
+  }
+  if (label === 'Supplier') return `🏢 ${props.name || props.id}`;
+  if (label === 'CloudKitchen') return `🍳 ${props.name || props.id}`;
+  if (label === 'Dish') return `🍲 ${props.name || props.id}`;
+  if (label === 'Order') return `📦 ${props.id}`;
+  if (label === 'Customer') return `👤 ${props.name || props.id}`;
+  if (label === 'Facility') return `🏭 ${props.name || props.id}`;
+  return props.name || props.id || label;
+}
+
+function initCytoscape() {
+  const container = $('cy');
+  if (!container) return;
+
   cy = cytoscape({
-    container: $('cy'),
-    elements: [],
-    layout: { name: 'preset' },
-    wheelSensitivity: 0.25,
-    minZoom: 0.05,
-    maxZoom: 3.5,
+    container,
     boxSelectionEnabled: false,
+    autounselectify: false,
+    wheelSensitivity: 0.25,
     style: [
       {
         selector: 'node',
         style: {
-          'background-color': 'data(color)',
-          label: 'data(ltext)',
-          color: '#e2e8f0',
-          'text-valign': 'bottom',
-          'text-margin-y': 7,
-          'font-size': 10,
+          'label': 'data(labelText)',
+          'color': '#ffffff',
           'font-family': 'Inter, sans-serif',
+          'font-size': '10px',
           'font-weight': 600,
+          'text-valign': 'bottom',
+          'text-margin-y': 6,
           'text-wrap': 'wrap',
-          'text-max-width': 120,
-          width: 26,
-          height: 26,
+          'text-max-width': '90px',
+          'background-color': 'data(bg)',
           'border-width': 2,
-          'border-color': 'data(border)',
-          'overlay-padding': 4,
-          'transition-property': 'background-color, border-color, width, height, opacity',
+          'border-color': 'rgba(255, 255, 255, 0.25)',
+          'width': 'data(size)',
+          'height': 'data(size)',
+          'transition-property': 'background-color, border-color, border-width, opacity, width, height',
           'transition-duration': '0.2s',
-        },
-      },
-      {
-        selector: 'node[label="Batch"]',
-        style: {
-          width: 40,
-          height: 40,
-          'font-size': 11,
-          'font-family': 'JetBrains Mono, monospace',
-          'font-weight': 700,
-          'border-width': 3,
-        },
-      },
-      {
-        selector: 'node[label="Supplier"]',
-        style: {
-          width: 34,
-          height: 34,
-          'border-width': 2,
-          shape: 'diamond',
-        },
-      },
-      {
-        selector: 'node[label="CloudKitchen"]',
-        style: {
-          width: 32,
-          height: 32,
-          'border-width': 2,
-          shape: 'round-rectangle',
-        },
+        }
       },
       {
         selector: 'edge',
         style: {
-          width: 1.5,
-          'line-color': 'rgba(56, 189, 248, 0.25)',
-          'target-arrow-color': 'rgba(56, 189, 248, 0.45)',
-          'target-arrow-shape': 'triangle',
-          'arrow-scale': 0.9,
           'curve-style': 'bezier',
-          label: 'data(label)',
-          'font-size': 8.5,
+          'target-arrow-shape': 'triangle',
+          'target-arrow-color': 'data(edgeColor)',
+          'line-color': 'data(edgeColor)',
+          'line-opacity': 0.65,
+          'width': 1.8,
+          'arrow-scale': 0.85,
+          'label': 'data(type)',
           'font-family': 'JetBrains Mono, monospace',
-          color: '#94a3b8',
+          'font-size': '8px',
+          'color': '#94a3b8',
           'text-rotation': 'autorotate',
+          'text-background-opacity': 0.85,
           'text-background-color': '#030712',
-          'text-background-opacity': 0.9,
           'text-background-padding': 2,
           'text-background-shape': 'roundrectangle',
-        },
+          'transition-property': 'line-color, target-arrow-color, width, opacity',
+          'transition-duration': '0.2s',
+        }
       },
-      // State Classes
       {
-        selector: 'node.sel',
+        selector: 'edge[type = "MENU_BLOCKED"]',
         style: {
-          'border-color': '#00f2fe',
+          'line-style': 'dashed',
+          'line-color': '#ef4444',
+          'target-arrow-color': '#ef4444',
+          'width': 2.5,
+        }
+      },
+      // Selected State
+      {
+        selector: 'node:selected, node.selected',
+        style: {
           'border-width': 4,
+          'border-color': '#00f2fe',
           'shadow-blur': 18,
           'shadow-color': '#00f2fe',
           'shadow-opacity': 0.8,
-        },
+        }
       },
+      // Traced Path Highlighting
       {
         selector: 'node.traced',
         style: {
-          'border-color': '#f59e0b',
           'border-width': 4,
-          'shadow-blur': 14,
+          'border-color': '#f59e0b',
+          'shadow-blur': 16,
           'shadow-color': '#f59e0b',
-          'shadow-opacity': 0.7,
-        },
+          'shadow-opacity': 0.8,
+          'opacity': 1,
+        }
       },
       {
-        selector: 'edge.traced-e',
+        selector: 'edge.traced',
         style: {
           'line-color': '#f59e0b',
           'target-arrow-color': '#f59e0b',
-          width: 2.8,
-        },
+          'width': 3.5,
+          'opacity': 1,
+        }
       },
+      // Recall Blast Radius Highlighting
       {
-        selector: 'node.blast',
+        selector: 'node.blast-zone',
         style: {
-          'border-color': '#ff2d55',
           'border-width': 4,
+          'border-color': '#ef4444',
           'shadow-blur': 22,
-          'shadow-color': '#ff2d55',
-          'shadow-opacity': 0.85,
-        },
+          'shadow-color': '#ef4444',
+          'shadow-opacity': 0.9,
+          'opacity': 1,
+        }
       },
       {
-        selector: 'edge.blast-e',
+        selector: 'edge.blast-zone',
         style: {
-          'line-color': '#ff2d55',
-          'target-arrow-color': '#ff2d55',
-          width: 2.8,
-        },
+          'line-color': '#ef4444',
+          'target-arrow-color': '#ef4444',
+          'width': 3.8,
+          'opacity': 1,
+        }
+      },
+      // Dimmed Background Nodes & Edges
+      {
+        selector: 'node.dimmed',
+        style: {
+          'opacity': 0.15,
+        }
       },
       {
-        selector: 'node.dim',
+        selector: 'edge.dimmed',
         style: {
-          opacity: 0.12,
-        },
-      },
-      {
-        selector: 'edge.dim',
-        style: {
-          opacity: 0.05,
-        },
-      },
-    ],
+          'opacity': 0.08,
+        }
+      }
+    ]
   });
 
-  // Tap & Hover Events
-  cy.on('tap', 'node', (ev) => selectNode(ev.target));
-  cy.on('tap', (ev) => {
-    if (ev.target === cy) clearSelection();
-  });
+  // Node Click -> Immediate Downstream Trace (Shift+Click -> Upstream)
+  cy.on('tap', 'node', (e) => {
+    const node = e.target;
+    const nid = node.id();
+    const label = node.data('label');
+    const props = node.data('props') || {};
 
-  const tip = $('tip');
-  cy.on('mouseover', 'node', (ev) => {
-    const d = ev.target.data();
-    const props = d.props || {};
-    tip.textContent = `${d.label} // ${ev.target.id()}\n` +
-      Object.entries(props).slice(0, 5).map(([k, v]) => `${k}: ${fmtVal(v)}`).join('\n');
-    tip.style.opacity = 1;
-  });
+    selectedNode = { id: nid, label, props };
+    updateToolbarState();
+    renderInspector(selectedNode);
 
-  cy.on('mousemove', (ev) => {
-    if (ev.renderedPosition) {
-      tip.style.left = (ev.renderedPosition.x + 18) + 'px';
-      tip.style.top = (ev.renderedPosition.y + 14) + 'px';
-    }
-  });
-
-  cy.on('mouseout', 'node', () => {
-    tip.style.opacity = 0;
-  });
-}
-
-function applyLayeredLayout(fit = true) {
-  const byLayer = {};
-  cy.nodes().forEach((n) => {
-    const l = n.data('label');
-    (byLayer[l] = byLayer[l] || []).push(n);
-  });
-  for (const [l, nodes] of Object.entries(byLayer)) {
-    const x = (LX[l] ?? 3.5) * 260;
-    nodes.forEach((n, i) => {
-      n.position({ x, y: (i - (nodes.length - 1) / 2) * 105 });
-    });
-  }
-  if (fit) cy.fit(undefined, 50);
-}
-
-function addStore(data) {
-  const els = [];
-  for (const n of data.nodes || []) {
-    const color = nodeColor(n.label, n.props);
-    const border = n.label === 'Batch' ? color : 'rgba(255,255,255,.25)';
-    const ex = cy.getElementById(n.id);
-    if (ex.length) {
-      ex.data({
-        ltext: nodeLabelText(n.label, n.props),
-        color,
-        border,
-        props: n.props,
-      });
+    if (e.originalEvent && e.originalEvent.shiftKey) {
+      traceCorridor(label, nid, 'up');
     } else {
-      els.push({
-        group: 'nodes',
+      traceCorridor(label, nid, 'down');
+    }
+  });
+
+  // Edge Click
+  cy.on('tap', 'edge', (e) => {
+    const edge = e.target;
+    const tip = $('tip');
+    if (tip) {
+      const type = edge.data('type');
+      const props = edge.data('props') || [];
+      const pStr = props.map(p => Object.entries(p).map(([k, v]) => `${k}: ${v}`).join(', ')).join('\n');
+      showTip(`Relationship: ${type}\n${pStr}`, e.renderedPosition);
+    }
+  });
+
+  // Tap Background -> Clear
+  cy.on('tap', (e) => {
+    if (e.target === cy) {
+      clearSelection();
+      clearBlast();
+      hideTip();
+    }
+  });
+
+  // Tooltip Hover Handlers
+  cy.on('mouseover', 'node', (e) => {
+    const d = e.target.data();
+    const p = d.props || {};
+    let text = `[${d.label}] ${p.id || d.id}`;
+    if (p.name) text += `\nName: ${p.name}`;
+    if (p.ingredientName) text += `\nIngredient: ${p.ingredientName}`;
+    if (p.status) text += `\nRisk Status: ${p.status}`;
+    if (p.location) text += `\nLocation: ${p.location}`;
+    if (p.price) text += `\nPrice: ₹${p.price}`;
+    if (p.phone) text += `\nPhone: ${p.phone}`;
+    showTip(text, e.renderedPosition);
+  });
+
+  cy.on('mouseout', 'node', () => hideTip());
+  cy.on('mouseout', 'edge', () => hideTip());
+}
+
+function renderCytoscape(data) {
+  if (!cy) return;
+
+  const elements = [];
+  const nodeIds = new Set();
+
+  (data.nodes || []).forEach(n => {
+    nodeIds.add(n.id);
+    const size = n.label === 'Supplier' ? 42 :
+                 n.label === 'Batch' ? 38 :
+                 n.label === 'CloudKitchen' ? 36 :
+                 n.label === 'Dish' ? 32 : 28;
+
+    elements.push({
+      group: 'nodes',
+      data: {
+        id: n.id,
+        label: n.label,
+        labelText: getNodeLabel(n.label, n.props),
+        bg: getNodeColor(n.label, n.props),
+        size,
+        props: n.props || {}
+      }
+    });
+  });
+
+  (data.edges || []).forEach(e => {
+    if (nodeIds.has(e.source) && nodeIds.has(e.target)) {
+      elements.push({
+        group: 'edges',
         data: {
-          id: n.id,
-          label: n.label,
-          ltext: nodeLabelText(n.label, n.props),
-          color,
-          border,
-          props: n.props,
-        },
+          id: `${e.source}_${e.type}_${e.target}`,
+          source: e.source,
+          target: e.target,
+          type: e.type,
+          edgeColor: EDGE_COLORS[e.type] || 'rgba(148, 163, 184, 0.4)',
+          props: e.props || []
+        }
       });
     }
-  }
+  });
 
-  for (const e of data.edges || []) {
-    const key = `${e.type}|${e.source}|${e.target}`;
-    if (cy.getElementById(key).length) continue;
-    els.push({
-      group: 'edges',
-      data: {
-        id: key,
-        key,
-        source: e.source,
-        target: e.target,
-        label: edgeLabel(e.type, e.props || []),
-        etype: e.type,
-      },
+  cy.elements().remove();
+  cy.add(elements);
+  applyTopologicalLayout(true);
+}
+
+// -----------------------------------------------------------------------------
+// Topological Tiered Layout
+// -----------------------------------------------------------------------------
+function applyTopologicalLayout(fit = true) {
+  if (!cy || cy.nodes().length === 0) return;
+
+  const layers = {};
+  LAYERS.forEach(l => { layers[l] = []; });
+
+  cy.nodes().forEach(node => {
+    const label = node.data('label') || 'Other';
+    if (!layers[label]) layers[label] = [];
+    layers[label].push(node);
+  });
+
+  // Sort nodes in each layer alphabetically
+  Object.keys(layers).forEach(k => {
+    layers[k].sort((a, b) => a.id().localeCompare(b.id()));
+  });
+
+  const X_SPACING = 210;
+  const Y_SPACING = 85;
+
+  let maxTierHeight = 0;
+  Object.values(layers).forEach(arr => {
+    if (arr.length > maxTierHeight) maxTierHeight = arr.length;
+  });
+
+  const activeTiers = LAYERS.filter(l => layers[l] && layers[l].length > 0);
+
+  activeTiers.forEach((tierName, tierIdx) => {
+    const nodesInTier = layers[tierName];
+    const totalNodes = nodesInTier.length;
+    const startY = -((totalNodes - 1) * Y_SPACING) / 2;
+
+    nodesInTier.forEach((node, nodeIdx) => {
+      const posX = tierIdx * X_SPACING;
+      const posY = startY + nodeIdx * Y_SPACING;
+      node.position({ x: posX, y: posY });
+    });
+  });
+
+  if (fit) {
+    cy.fit(undefined, 50);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Click-to-Trace (Upstream & Downstream)
+// -----------------------------------------------------------------------------
+async function traceCorridor(label, nodeId, direction = 'down') {
+  try {
+    const res = await api(`/api/trace/${encodeURIComponent(label)}/${encodeURIComponent(nodeId)}?direction=${direction}`);
+    const tracedNodeIds = new Set((res.nodes || []).map(n => n.id));
+    const tracedEdgeKeys = new Set((res.edges || []).map(e => `${e.source}_${e.type}_${e.target}`));
+
+    activeTrace = { nodes: tracedNodeIds, edges: tracedEdgeKeys, direction };
+
+    cy.batch(() => {
+      cy.nodes().forEach(n => {
+        if (tracedNodeIds.has(n.id())) {
+          n.addClass('traced').removeClass('dimmed');
+        } else {
+          n.removeClass('traced').addClass('dimmed');
+        }
+      });
+
+      cy.edges().forEach(e => {
+        const key = `${e.source().id()}_${e.data('type')}_${e.target().id()}`;
+        if (tracedEdgeKeys.has(key)) {
+          e.addClass('traced').removeClass('dimmed');
+        } else {
+          e.removeClass('traced').addClass('dimmed');
+        }
+      });
+    });
+
+    toast(`Traced ${direction.toUpperCase()}: ${tracedNodeIds.size} nodes highlighted`, 'info');
+  } catch (e) {
+    console.error('Trace error:', e);
+    toast(e.message, 'err');
+  }
+}
+
+function clearSelection() {
+  selectedNode = null;
+  activeTrace = null;
+  if (cy) {
+    cy.batch(() => {
+      cy.elements().removeClass('selected traced dimmed');
+      if (blastState) {
+        applyBlastVisuals();
+      }
     });
   }
-
-  if (els.length) cy.add(els);
-  applyLayeredLayout(false);
+  updateToolbarState();
+  renderInspector(null);
 }
 
-/* --------------------------------------------------------------------------
-   Highlights & Blast Radius Visualization
-   -------------------------------------------------------------------------- */
-function applyHighlights() {
-  cy.elements().removeClass('traced traced-e');
-  if (hlNodes.size) {
-    cy.nodes().filter((n) => hlNodes.has(n.id())).addClass('traced');
-  }
-  if (hlEdgeKeys.size) {
-    cy.edges().filter((e) => hlEdgeKeys.has(e.data('key'))).addClass('traced-e');
-  }
-}
-
-function applyBlast() {
-  cy.nodes().removeClass('blast dim');
-  cy.edges().removeClass('blast-e dim');
-  if (!blast) return;
-
-  cy.nodes().forEach((n) => {
-    n.addClass(blast.nodeIds.has(n.id()) ? 'blast' : 'dim');
-  });
-  cy.edges().forEach((e) => {
-    e.addClass(blast.edgeKeys.has(e.data('key')) ? 'blast-e' : 'dim');
-  });
-  cy.fit(undefined, 50);
-}
-
-function showBanner() {
-  const b = $('recallbanner');
-  if (!blast) {
-    b.classList.add('hidden');
-    return;
-  }
-  const c = blast.counts;
-  b.className = 'banner ' + (blast.simulateOnly ? 'sim' : '');
-  b.innerHTML = `
-    <span class="b-title">${blast.simulateOnly ? 'SIMULATION' : 'RECALL ACTIVE'}</span>
-    <span class="mono-meta" style="color:#fff;font-size:13px;font-weight:700">${esc(blast.batch)}</span>
-    <span>💥 Affected: <b>${c.kitchens}</b> kitchens · <b>${c.dishes}</b> dishes · <b>${c.orders}</b> orders · <b>${c.customers}</b> consumers</span>
-    <span class="mono-meta" style="margin-left:auto">${blast.window ? 'TEMPORAL WINDOW ≥ ' + fmtDate(blast.window) : 'SCOPE: FULL BATCH'}</span>
-    <button class="hud-btn secondary" id="banner-clear" style="padding:4px 10px;font-size:11px">✕ Clear</button>
-  `;
-  $('banner-clear').onclick = clearBlast;
-}
-
-function clearBlast() {
-  blast = null;
-  applyBlast();
-  showBanner();
-  updateToolbar();
-}
-
-async function runBlast(batchId, simulateOnly) {
+// -----------------------------------------------------------------------------
+// Blast Radius & Contamination Map
+// -----------------------------------------------------------------------------
+async function runBlast(batchOrSupplierId) {
   try {
-    const d = await api(`/api/blast/${encodeURIComponent(batchId)}`);
-    addStore(d.graph);
-    blast = {
-      nodeIds: new Set(d.node_ids),
-      edgeKeys: new Set(d.edges.map((e) => `${e.type}|${e.source}|${e.target}`)),
-      counts: d.counts,
-      window: d.window,
-      batch: d.batch,
-      simulateOnly,
+    const isSupplier = selectedNode && selectedNode.label === 'Supplier';
+    const endpoint = isSupplier ? `/api/blast-supplier/${encodeURIComponent(batchOrSupplierId)}` :
+                                  `/api/blast/${encodeURIComponent(batchOrSupplierId)}`;
+
+    const res = await api(endpoint);
+    blastState = {
+      batch: res.batch,
+      counts: res.counts,
+      nodes: new Set(res.node_ids || []),
+      edges: new Set((res.edges || []).map(e => `${e.source}_${e.type}_${e.target}`))
     };
-    applyBlast();
-    showBanner();
-    updateToolbar();
-    toast(`Blast radius calculated: ${d.counts.kitchens} kitchens, ${d.counts.orders} orders`, 'warn');
+
+    applyBlastVisuals();
+    updateToolbarState();
+
+    const c = res.counts || {};
+    toast(`💥 Blast radius calculated: ${c.kitchens || 0} kitchens, ${c.dishes || 0} dishes, ${c.orders || 0} orders affected.`, 'warn');
   } catch (e) {
     toast(e.message, 'err');
   }
 }
 
-/* --------------------------------------------------------------------------
-   Selection & Inspector Console
-   -------------------------------------------------------------------------- */
-function clearSelection(clearHl = true) {
-  if (selected) cy.getElementById(selected.id).removeClass('sel');
-  selected = null;
-  if (clearHl) {
-    hlNodes.clear();
-    hlEdgeKeys.clear();
-    applyHighlights();
-  }
-  $('insp-body').innerHTML = `
-    <div class="insp-empty-state">
-      <div class="empty-crosshair">✛</div>
-      <h3>Select Any Node</h3>
-      <p>Click any Supplier, Batch, Kitchen, Dish, or Order to inspect real-time properties, detonate recall simulations, or enforce containment.</p>
-      <div class="shortcut-hints">
-        <span><kbd>Space</kbd> Fit</span>
-        <span><kbd>B</kbd> Blast</span>
-        <span><kbd>T</kbd> Timeline</span>
-        <span><kbd>Esc</kbd> Clear</span>
-      </div>
-    </div>
-  `;
-  updateToolbar();
-}
-
-async function selectNode(node) {
-  if (selected) cy.getElementById(selected.id).removeClass('sel');
-  selected = { id: node.id(), label: node.data('label') };
-  node.addClass('sel');
-  updateToolbar();
-
-  // Smooth pan/zoom to center
-  cy.animate({
-    center: { eles: node },
-    zoom: Math.max(cy.zoom(), 0.9),
-    duration: 250,
-  });
-
-  $('insp-body').innerHTML = `
-    <div class="insp-empty-state">
-      <div class="empty-crosshair" style="animation:spin 1s linear infinite">◌</div>
-      <h3>Querying Neo4j...</h3>
-      <p class="mono-meta">MATCH (n:${esc(selected.label)} {id: '${esc(selected.id)}'})</p>
-    </div>
-  `;
-
+async function runContaminationMap() {
   try {
-    const d = await api(`/api/node/${encodeURIComponent(selected.label)}/${encodeURIComponent(selected.id)}`);
-    renderInspector(d);
+    const res = await api('/api/contamination');
+    blastState = {
+      batch: 'ALL FLAGGED',
+      counts: res.counts,
+      nodes: new Set(res.node_ids || []),
+      edges: new Set((res.edges || []).map(e => `${e.source}_${e.type}_${e.target}`))
+    };
+
+    applyBlastVisuals();
+    updateToolbarState();
+
+    const c = res.counts || {};
+    toast(`🚨 System-wide recall blast: ${c.kitchens || 0} kitchens, ${c.dishes || 0} dishes, ${c.orders || 0} orders exposed.`, 'err');
   } catch (e) {
-    $('insp-body').innerHTML = `<div class="panel-section" style="border-color:var(--crimson-crit)">⚠️ ${esc(e.message)}</div>`;
+    toast(e.message, 'err');
   }
 }
 
-function selectNodeById(id, label) {
-  const n = cy.getElementById(id);
-  if (n.length) selectNode(n);
+function applyBlastVisuals() {
+  if (!cy || !blastState) return;
+
+  cy.batch(() => {
+    cy.nodes().forEach(n => {
+      if (blastState.nodes.has(n.id())) {
+        n.addClass('blast-zone').removeClass('dimmed');
+      } else {
+        n.removeClass('blast-zone').addClass('dimmed');
+      }
+    });
+
+    cy.edges().forEach(e => {
+      const key = `${e.source().id()}_${e.data('type')}_${e.target().id()}`;
+      if (blastState.edges.has(key)) {
+        e.addClass('blast-zone').removeClass('dimmed');
+      } else {
+        e.removeClass('blast-zone').addClass('dimmed');
+      }
+    });
+  });
 }
 
-function renderInspector(d) {
-  const p = d.props;
-  const label = selected.label;
-  const isBatch = label === 'Batch';
-  const isSupplier = label === 'Supplier';
+function clearBlast() {
+  blastState = null;
+  if (cy) {
+    cy.batch(() => {
+      cy.elements().removeClass('blast-zone dimmed');
+      if (activeTrace) {
+        cy.nodes().forEach(n => {
+          if (activeTrace.nodes.has(n.id())) n.addClass('traced');
+          else n.addClass('dimmed');
+        });
+        cy.edges().forEach(e => {
+          const key = `${e.source().id()}_${e.data('type')}_${e.target().id()}`;
+          if (activeTrace.edges.has(key)) e.addClass('traced');
+          else e.addClass('dimmed');
+        });
+      }
+    });
+  }
+  updateToolbarState();
+}
 
-  let html = `
-    <div class="insp-header">
-      <div class="insp-id-group">
-        <span class="entity-chip ${label}">${esc(label)}</span>
-        <h2>${esc(p.id || p.name)}</h2>
-      </div>
-      ${isBatch || isSupplier ? `
-        <span class="status-badge ${p.status || 'GREEN'}">
-          ${STATUS_EMOJI[p.status] || '●'} ${esc(p.status || 'GREEN')}
-        </span>
-      ` : ''}
-    </div>
-  `;
+// -----------------------------------------------------------------------------
+// Tooltip & Floating Info
+// -----------------------------------------------------------------------------
+function showTip(text, pos) {
+  const tip = $('tip');
+  if (!tip || !pos) return;
+  tip.textContent = text;
+  tip.style.left = `${pos.x + 14}px`;
+  tip.style.top = `${pos.y + 14}px`;
+  tip.style.opacity = '1';
+}
 
-  // Batch-specific incident metadata
-  if (isBatch) {
-    html += `
-      <div class="intervention-card" style="border-color:rgba(245,158,11,0.3)">
-        <h3>Incident Telemetry</h3>
-        <p style="font-size:12px;margin-bottom:4px">
-          <b>Ingredient:</b> ${esc(p.ingredientName || '—')} · 
-          <b>Status Reason:</b> ${esc(p.statusReason || 'Normal production')}
+function hideTip() {
+  const tip = $('tip');
+  if (tip) tip.style.opacity = '0';
+}
+
+// -----------------------------------------------------------------------------
+// Toolbar Management
+// -----------------------------------------------------------------------------
+function updateToolbarState() {
+  const hasSelection = !!selectedNode;
+  const isBatchOrSup = selectedNode && (selectedNode.label === 'Batch' || selectedNode.label === 'Supplier');
+  const isBatch = selectedNode && selectedNode.label === 'Batch';
+
+  $('btn-up').disabled = !hasSelection;
+  $('btn-expand').disabled = !hasSelection;
+  $('btn-collapse').disabled = !hasSelection;
+  $('btn-blast').disabled = !isBatchOrSup;
+  $('btn-clearblast').disabled = !blastState;
+  $('btn-timeline').disabled = !isBatch;
+  $('btn-pulllist').disabled = !isBatch;
+}
+
+// -----------------------------------------------------------------------------
+// Inspector Panel (Live Node Telemetry & Recall Controls)
+// -----------------------------------------------------------------------------
+async function renderInspector(node) {
+  const body = $('insp-body');
+  if (!body) return;
+
+  if (!node) {
+    body.innerHTML = `
+      <div style="text-align:center;padding:40px 10px;color:var(--txt-muted)">
+        <div style="font-size:28px;margin-bottom:12px;opacity:0.6">🕸</div>
+        <h3 style="font-size:14px;font-weight:700;color:var(--txt-bright);margin-bottom:6px">No Node Selected</h3>
+        <p style="font-size:12px;line-height:1.5">
+          Click any <b>Supplier</b>, <b>Batch</b>, <b>Kitchen</b>, or <b>Dish</b> to inspect telemetry,
+          run instant click-to-trace, detonate recall simulations, and enforce containment.
         </p>
-        ${p.contaminationDate ? `
-          <p class="mono-meta" style="color:#fde047">
-            ⚠ Contamination Window: ≥ ${fmtDate(p.contaminationDate)}
-          </p>
-        ` : ''}
-      </div>
-    `;
-  }
-
-  // Quick State Transition Controls for Batches & Suppliers
-  if (isBatch || isSupplier) {
-    const curStatus = p.status || 'GREEN';
-    const allowed = TRANSITIONS[curStatus] || [];
-    html += `
-      <div class="intervention-card">
-        <h3>Risk State Machine Transition</h3>
-        ${allowed.length ? `
-          <div class="transition-grid">
-            ${allowed.map((s) => `
-              <button class="hud-btn ${s === 'RED' ? 'danger' : 'primary'}" style="font-size:11px" onclick="promptTransition('${s}')">
-                → Set ${s}
-              </button>
-            `).join('')}
-          </div>
-        ` : `
-          <p class="mono-meta" style="color:var(--txt-muted)">Status is terminal (RED). Downstream recall active.</p>
-        `}
-      </div>
-    `;
-  }
-
-  // Immediate Recall & Containment Actions for Batches
-  if (isBatch) {
-    html += `
-      <div class="intervention-card" style="border-color:rgba(255,45,85,0.4)">
-        <h3>Intervention &amp; Recall Protocol</h3>
-        <div class="action-pill-row">
-          <button class="hud-btn danger" onclick="quickAction('contain')" title="Apply HOLD status to all receiving cloud kitchen hubs">
-            🧊 Hold Kitchens
-          </button>
-          <button class="hud-btn danger" onclick="quickAction('block')" title="Remove contaminated dishes from cloud kitchen menus">
-            🚫 Pull Menus
-          </button>
-        </div>
-        <div class="action-pill-row">
-          <button class="hud-btn primary" onclick="quickAction('notify')" title="Send safety notification to all affected consumers">
-            📱 Alert Users
-          </button>
-          <button class="hud-btn primary" onclick="openDrawer('fssai')" title="View and download FSSAI Digital Recall Dossier">
-            📑 FSSAI Dossier
-          </button>
+        <div style="margin-top:20px;display:flex;flex-direction:column;gap:6px;font-size:11px;font-family:var(--font-mono)">
+          <span><kbd style="padding:2px 6px;background:rgba(255,255,255,0.1);border-radius:4px">Click</kbd> Downstream trace</span>
+          <span><kbd style="padding:2px 6px;background:rgba(255,255,255,0.1);border-radius:4px">Shift+Click</kbd> Upstream trace</span>
+          <span><kbd style="padding:2px 6px;background:rgba(255,255,255,0.1);border-radius:4px">Space</kbd> Fit viewport</span>
         </div>
       </div>
     `;
-  }
-
-  // Properties Ledger
-  const propRows = Object.entries(p)
-    .filter(([k, v]) => v !== null && !k.startsWith('_'))
-    .map(([k, v]) => `
-      <tr>
-        <td class="prop-key">${esc(k)}</td>
-        <td class="prop-val mono-meta">${esc(fmtVal(v))}</td>
-      </tr>
-    `).join('');
-
-  html += `
-    <div class="panel-section">
-      <div class="section-hdr">
-        <h2>Entity Properties</h2>
-        <span class="mono-meta">${Object.keys(p).length} fields</span>
-      </div>
-      <table class="cyber-table"><tbody>${propRows}</tbody></table>
-    </div>
-  `;
-
-  // Connected Graph Traversal Edges
-  if (d.relationships && d.relationships.length) {
-    const relRows = d.relationships.map((r) => `
-      <tr>
-        <td class="prop-key" style="white-space:nowrap">
-          <span class="rel-badge">${r.outbound ? '→' : '←'} ${esc(r.rel)}</span>
-        </td>
-        <td class="prop-val">
-          <a href="javascript:void(0)" onclick="selectNodeById('${esc(r.other)}', '${esc(r.other_label)}')" style="color:var(--cyan-neon);text-decoration:none">
-            ${esc(r.other_label)}: <b>${esc(r.other)}</b>
-          </a>
-        </td>
-      </tr>
-    `).join('');
-
-    html += `
-      <div class="panel-section">
-        <div class="section-hdr">
-          <h2>Connected Nodes</h2>
-          <span class="mono-meta">${d.relationships.length} edges</span>
-        </div>
-        <table class="cyber-table"><tbody>${relRows}</tbody></table>
-      </div>
-    `;
-  }
-
-  $('insp-body').innerHTML = html;
-}
-
-window.promptTransition = async function(targetStatus) {
-  if (!selected) return;
-  const reason = prompt(`Enter mandatory audit trail reason for transitioning ${selected.id} to ${targetStatus}:`);
-  if (!reason || !reason.trim()) {
-    toast('Audit reason is required for every risk transition', 'warn');
     return;
   }
 
-  let contamination_date = null;
-  if (targetStatus === 'YELLOW') {
-    const dt = prompt('Contamination start datetime (YYYY-MM-DD HH:MM in IST):', '2025-09-10 14:00');
-    if (dt) contamination_date = new Date(dt.replace(' ', 'T') + ':00+05:30').toISOString();
+  const { id, label, props } = node;
+  let html = `
+    <div style="border-bottom:1px solid var(--panel-border);padding-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--txt-muted);font-weight:700">${label}</span>
+        ${props.status ? `<span class="tag ${props.status.toLowerCase()}">${props.status}</span>` : ''}
+      </div>
+      <h2 style="font-size:16px;font-weight:800;font-family:var(--font-mono);color:var(--txt-bright)">${id}</h2>
+      ${props.name ? `<p style="font-size:12.5px;color:var(--txt-base);margin-top:2px">${props.name}</p>` : ''}
+    </div>
+  `;
+
+  // Risk Flagging Controls for Batch / Supplier
+  if (label === 'Batch' || label === 'Supplier') {
+    const curStatus = props.status || 'GREEN';
+    html += `
+      <div class="panel">
+        <h2>Risk State Management</h2>
+        <p style="font-size:11.5px;color:var(--txt-muted)">Current status: <b>${curStatus}</b></p>
+        ${props.statusReason ? `<p style="font-size:11px;color:#fcd34d">Reason: ${props.statusReason}</p>` : ''}
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          ${curStatus === 'GREEN' ? `
+            <button class="btn warn" onclick="promptFlag('${label}', '${id}', 'YELLOW')">Flag 🟡 Suspect</button>
+          ` : ''}
+          ${curStatus === 'YELLOW' ? `
+            <button class="btn danger" onclick="promptFlag('${label}', '${id}', 'RED')">Confirm 🔴 Contaminated</button>
+            <button class="btn primary" onclick="promptFlag('${label}', '${id}', 'GREEN')">Clear 🟢 Safe</button>
+          ` : ''}
+          ${curStatus === 'RED' ? `
+            <button class="btn warn" onclick="promptFlag('${label}', '${id}', 'YELLOW')">Downgrade 🟡 Suspect</button>
+            <button class="btn primary" onclick="promptFlag('${label}', '${id}', 'GREEN')">Clear 🟢 Safe</button>
+          ` : ''}
+        </div>
+      </div>
+    `;
   }
 
+  // Kitchen Menu Pulls & Recall Execution (for Batch)
+  if (label === 'Batch') {
+    try {
+      const pullData = await api(`/api/pull-list/${encodeURIComponent(id)}`);
+      const list = pullData.pull_list || [];
+
+      html += `
+        <div class="panel">
+          <h2>Affected Kitchen Status</h2>
+          <div class="kchips" style="margin-bottom:10px">
+            ${list.length === 0 ? '<span style="font-size:11px;color:var(--txt-muted)">No kitchens affected in window</span>' :
+              list.map(k => `
+                <span class="kchip-state ${k.pulled ? 'pulled' : 'live'}">
+                  ${k.kitchen} [${k.pulled ? 'PULLED' : 'ACTIVE'}]
+                </span>
+              `).join('')}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="btn danger wide" onclick="pullBatchMenu('${id}')">🚫 Pull Dishes from Menus</button>
+            <button class="btn wide" onclick="restoreBatchMenu('${id}')">↺ Restore Menus</button>
+            <button class="btn primary wide" onclick="notifyBatchCustomers('${id}')">📱 Send Customer Outreach</button>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      console.warn('Failed to load pull list preview:', e);
+    }
+  }
+
+  // Quick Action Buttons
+  html += `
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${label === 'Batch' ? `
+        <button class="btn wide" onclick="openBatchTimeline('${id}')">⏱ Incident Timeline</button>
+        <button class="btn wide" onclick="openRecallReport('${id}')">📜 FSSAI Compliance Report</button>
+      ` : ''}
+      <button class="btn wide" onclick="expandNodeNeighborhood('${label}', '${id}')">➕ Expand Connections</button>
+    </div>
+  `;
+
+  // Raw Properties Table
+  html += `
+    <div class="panel">
+      <h2>Node Properties</h2>
+      <table style="width:100%;font-size:11px;border-collapse:collapse">
+        ${Object.entries(props).map(([k, v]) => `
+          <tr>
+            <td style="padding:4px 0;color:var(--txt-muted);font-family:var(--font-mono)">${k}</td>
+            <td style="padding:4px 0;text-align:right;color:var(--txt-bright);font-weight:600">${typeof v === 'object' ? JSON.stringify(v) : v}</td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>
+  `;
+
+  body.innerHTML = html;
+}
+
+// -----------------------------------------------------------------------------
+// Interventions & Actions
+// -----------------------------------------------------------------------------
+async function promptFlag(label, id, newStatus) {
+  const reason = prompt(`Enter reason for transitioning ${id} to ${newStatus}:`,
+    newStatus === 'RED' ? 'Confirmed microbial contamination via laboratory test' :
+    newStatus === 'YELLOW' ? 'Cold-chain temperature deviation during transit' :
+    'Batch verified safe by FSSAI quality audit');
+
+  if (!reason) return;
+
   try {
-    const endpoint = selected.label === 'Supplier'
-      ? `/api/flag-supplier/${encodeURIComponent(selected.id)}`
-      : `/api/flag/${encodeURIComponent(selected.id)}`;
+    const endpoint = label === 'Supplier' ? `/api/flag-supplier/${encodeURIComponent(id)}` :
+                                            `/api/flag/${encodeURIComponent(id)}`;
 
     await api(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        new_status: targetStatus,
-        reason: reason.trim(),
-        actor: 'mission_control_ui',
-        contamination_date,
-      }),
+      body: JSON.stringify({ new_status: newStatus, reason, actor: 'mission_control' })
     });
 
-    toast(`${selected.id} transitioned to ${targetStatus}`, 'ok');
-    loadKpis();
-    if (selected.label === 'Batch') {
-      await runBlast(selected.id, false);
+    toast(`Successfully updated ${id} to ${newStatus}`, 'ok');
+    await refreshTelemetry();
+    await loadNetwork();
+
+    if (selectedNode && selectedNode.id === id) {
+      selectedNode.props.status = newStatus;
+      selectedNode.props.statusReason = reason;
+      renderInspector(selectedNode);
     }
-    selectNodeById(selected.id, selected.label);
-  } catch (e) {
-    toast(e.message, 'err');
-  }
-};
-
-window.quickAction = async function(kind) {
-  if (!selected || selected.label !== 'Batch') return;
-  const id = selected.id;
-  const paths = {
-    contain: `/api/actions/contain/${encodeURIComponent(id)}?status=HOLD`,
-    block: `/api/actions/pull-menu/${encodeURIComponent(id)}`,
-    notify: `/api/actions/notify/${encodeURIComponent(id)}`,
-  };
-
-  try {
-    const r = await api(paths[kind], { method: 'POST' });
-    if (kind === 'contain') toast(`Kitchen HOLD applied: ${(r.kitchens || []).join(', ')}`, 'ok');
-    if (kind === 'block') toast(`Dishes pulled from menus: ${(r.pulled || r.dishes || []).join(', ')}`, 'ok');
-    if (kind === 'notify') toast(`${r.orders_notified || 0} customer orders flagged for outreach`, 'ok');
-    loadKpis();
-  } catch (e) {
-    toast(e.message, 'err');
-  }
-};
-
-/* --------------------------------------------------------------------------
-   Toolbar Controls & Graph Traversal
-   -------------------------------------------------------------------------- */
-function updateToolbar() {
-  const has = !!selected;
-  const isBatch = has && selected.label === 'Batch';
-  $('btn-up').disabled = !has;
-  $('btn-down').disabled = !has;
-  $('btn-expand').disabled = !has;
-  $('btn-collapse').disabled = !has;
-  $('btn-blast').disabled = !isBatch;
-  $('btn-timeline').disabled = !isBatch;
-  $('btn-pulllist').disabled = !isBatch;
-  $('btn-clearblast').disabled = !blast;
-}
-
-async function doTrace(dir) {
-  if (!selected) return;
-  try {
-    const d = await api(`/api/trace/${encodeURIComponent(selected.label)}/${encodeURIComponent(selected.id)}?direction=${dir}`);
-    addStore(d);
-    hlNodes = new Set(d.nodes.map((n) => n.id));
-    hlEdgeKeys = new Set(d.edges.map((e) => `${e.type}|${e.source}|${e.target}`));
-    applyHighlights();
-    toast(`Traced ${dir}: ${d.nodes.length} nodes highlighted`, 'ok');
   } catch (e) {
     toast(e.message, 'err');
   }
 }
 
-function collapseBranch() {
-  if (!selected) return;
-  const node = cy.getElementById(selected.id);
-  const desc = node.successors().nodes();
-  cy.remove(desc);
-  applyLayeredLayout(true);
-  toast(`Collapsed ${desc.length} downstream nodes`, 'ok');
-}
-
-/* --------------------------------------------------------------------------
-   Dockable Multi-Tab Drawer (Timeline, Pull List, FSSAI Dossier)
-   -------------------------------------------------------------------------- */
-function openDrawer(tabName = 'timeline') {
-  if (!selected || selected.label !== 'Batch') {
-    toast('Select a Batch to inspect its incident dossier', 'warn');
-    return;
-  }
-  activeDrawerTab = tabName;
-  $('drawer').classList.remove('hidden');
-
-  // Update active tab buttons
-  document.querySelectorAll('.dtab-btn').forEach((b) => b.classList.remove('active'));
-  const btn = $(`tab-${tabName}`);
-  if (btn) btn.classList.add('active');
-
-  if (tabName === 'timeline') renderDrawerTimeline();
-  else if (tabName === 'pulllist') renderDrawerPullList();
-  else if (tabName === 'fssai') renderDrawerFssai();
-}
-
-async function renderDrawerTimeline() {
-  $('drawer-icon').textContent = '⏱';
-  $('drawer-title').textContent = `Incident Timeline // ${selected.id}`;
-  $('drawer-body').innerHTML = '<p class="mono-meta">Loading timeline events from Neo4j...</p>';
-
+async function pullBatchMenu(batchId) {
   try {
-    const d = await api(`/api/timeline/${encodeURIComponent(selected.id)}`);
-    const win = d.contamination_date ? new Date(d.contamination_date) : null;
-    let html = `
-      <p class="mono-meta" style="margin-bottom:12px;color:var(--txt-bright)">
-        <b>Batch:</b> ${esc(d.batch)} · <b>Ingredient:</b> ${esc(d.ingredient || '')} · 
-        <b>Status:</b> ${STATUS_EMOJI[d.status] || ''} ${esc(d.status || '')} · <b>Supplier:</b> ${esc(d.supplier || '')}
-      </p>
+    const res = await api(`/api/actions/pull-menu/${encodeURIComponent(batchId)}`, { method: 'POST' });
+    toast(`Pulled ${(res.pulled || []).length} dish-kitchen pairs from active menus`, 'ok');
+    await refreshTelemetry();
+    if (selectedNode) renderInspector(selectedNode);
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+async function restoreBatchMenu(batchId) {
+  try {
+    const res = await api(`/api/actions/restore-menu/${encodeURIComponent(batchId)}`, { method: 'POST' });
+    toast(`Restored ${res.restored || 0} menu items back to active service`, 'ok');
+    await refreshTelemetry();
+    if (selectedNode) renderInspector(selectedNode);
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+async function notifyBatchCustomers(batchId) {
+  try {
+    const res = await api(`/api/actions/notify/${encodeURIComponent(batchId)}`, { method: 'POST' });
+    toast(`Dispatched safety notifications for ${res.orders_notified || 0} customer orders`, 'ok');
+    await refreshTelemetry();
+    if (selectedNode) renderInspector(selectedNode);
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+async function expandNodeNeighborhood(label, id) {
+  try {
+    const res = await api(`/api/expand/${encodeURIComponent(label)}/${encodeURIComponent(id)}`);
+    if (!cy) return;
+
+    const existingIds = new Set(cy.nodes().map(n => n.id()));
+    const newElements = [];
+
+    (res.nodes || []).forEach(n => {
+      if (!existingIds.has(n.id)) {
+        newElements.push({
+          group: 'nodes',
+          data: {
+            id: n.id,
+            label: n.label,
+            labelText: getNodeLabel(n.label, n.props),
+            bg: getNodeColor(n.label, n.props),
+            size: 32,
+            props: n.props || {}
+          }
+        });
+      }
+    });
+
+    (res.edges || []).forEach(e => {
+      const edgeId = `${e.source}_${e.type}_${e.target}`;
+      if (!cy.getElementById(edgeId).length) {
+        newElements.push({
+          group: 'edges',
+          data: {
+            id: edgeId,
+            source: e.source,
+            target: e.target,
+            type: e.type,
+            edgeColor: EDGE_COLORS[e.type] || '#94a3b8',
+            props: e.props || []
+          }
+        });
+      }
+    });
+
+    if (newElements.length > 0) {
+      cy.add(newElements);
+      applyTopologicalLayout(false);
+      toast(`Expanded ${newElements.length} connected entities`, 'info');
+    } else {
+      toast('All neighboring connections are already displayed', 'info');
+    }
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Operations Dashboard (Live Operational Face)
+// -----------------------------------------------------------------------------
+async function renderDashboard() {
+  const heroEl = $('d-hero');
+  const watchEl = $('d-watch');
+  const pullEl = $('d-pull');
+  const focusEl = $('d-focus');
+  const auditEl = $('d-audit');
+  const outreachEl = $('d-outreach');
+
+  const telemetry = await refreshTelemetry();
+  const counts = telemetry?.counts || {};
+  const flagged = telemetry?.flagged || [];
+
+  // 1. Hero Telemetry Cards
+  if (heroEl) {
+    heroEl.innerHTML = `
+      <div class="hcard">
+        <div class="n">${counts.Batch || 0}</div>
+        <div class="l">Total Batches</div>
+      </div>
+      <div class="hcard">
+        <div class="n" style="color:#10b981">${(counts.Batch || 0) - (telemetry.redCount + telemetry.yellowCount)}</div>
+        <div class="l">🟢 Safe Batches</div>
+      </div>
+      <div class="hcard ${telemetry.yellowCount > 0 ? 'warn' : ''}">
+        <div class="n" style="color:#f59e0b">${telemetry.yellowCount}</div>
+        <div class="l">🟡 Suspect Batches</div>
+      </div>
+      <div class="hcard ${telemetry.redCount > 0 ? 'alert' : ''}">
+        <div class="n" style="color:#ef4444">${telemetry.redCount}</div>
+        <div class="l">🔴 Recalls Active</div>
+      </div>
+      <div class="hcard">
+        <div class="n" style="color:#38bdf8">${counts.CloudKitchen || 0}</div>
+        <div class="l">Cloud Kitchens</div>
+      </div>
+      <div class="hcard">
+        <div class="n" style="color:#f43f5e">${counts.Customer || 0}</div>
+        <div class="l">Customers</div>
+      </div>
     `;
+  }
 
-    let markerDone = !win;
-    for (const ev of d.events) {
-      const ts = new Date(ev.ts);
-      if (!markerDone && ts >= win) {
-        html += `
-          <div class="tl-event">
-            ⛔ Contamination Event Demarcation — ${fmtDate(d.contamination_date)}<br>
-            <span class="mono-meta" style="color:#fee2e2">Upstream events are safe · downstream events require active recall</span>
+  // 2. Contamination Watchlist
+  if (watchEl) {
+    if (flagged.length === 0) {
+      watchEl.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 24px; text-align: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; color: var(--muted);">
+          ✨ All batches and suppliers are currently GREEN. No active contaminations or recalls.
+        </div>
+      `;
+    } else {
+      watchEl.innerHTML = flagged.map(f => `
+        <div class="wcard ${f.status.toLowerCase()}">
+          <div class="wtop">
+            <span class="tag ${f.status.toLowerCase()}">${f.status}</span>
+            <span class="wid">${f.id}</span>
+            <span class="wkind">${f.kind}</span>
+          </div>
+          <div class="wreason">${f.reason || 'Flagged under recall investigation'}</div>
+          <div class="wacts">
+            <button class="btn" onclick="focusOnGraph('${f.kind}', '${f.id}')">🕸 View Graph</button>
+            <button class="btn danger" onclick="triggerBlastAndSwitch('${f.id}')">💥 Blast</button>
+            <button class="btn" onclick="focusPullList('${f.id}')">📋 Pull List</button>
+            <button class="btn" onclick="promptFlag('${f.kind}', '${f.id}', '${f.status === 'RED' ? 'GREEN' : 'RED'}')">⚡ Change</button>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // Active Batch Focus
+  if (!activeWatchBatch && flagged.length > 0) {
+    activeWatchBatch = flagged[0].id;
+  }
+
+  if (focusEl) {
+    focusEl.textContent = activeWatchBatch ? `(${activeWatchBatch})` : '';
+  }
+
+  // 3. Kitchen Pull List Table
+  if (pullEl && activeWatchBatch) {
+    try {
+      const pullRes = await api(`/api/pull-list/${encodeURIComponent(activeWatchBatch)}`);
+      const rows = pullRes.pull_list || [];
+
+      if (rows.length === 0) {
+        pullEl.innerHTML = '<p class="muted small" style="padding:12px">No affected kitchens for this batch window.</p>';
+      } else {
+        pullEl.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Kitchen</th>
+                <th>Location</th>
+                <th>Dishes to Pull</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => `
+                <tr>
+                  <td><b>${r.kitchen}</b></td>
+                  <td class="muted">${r.location || 'NCR'}</td>
+                  <td>${(r.pull_dishes || []).map(d => d.name).join(', ') || '—'}</td>
+                  <td>
+                    <span class="tag ${r.pulled ? 'pulled' : 'pending'}">${r.pulled ? 'PULLED' : 'ACTION REQ'}</span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn danger" onclick="pullBatchMenu('${activeWatchBatch}')">🚫 Pull All Dishes</button>
+            <button class="btn" onclick="restoreBatchMenu('${activeWatchBatch}')">↺ Restore</button>
           </div>
         `;
-        markerDone = true;
       }
-      const cls = ev.kind === 'AUDIT' ? 'tl-audit' : (win && ts >= win ? 'tl-in' : 'tl-clear');
-      html += `
-        <div class="tl-row ${cls}">
-          <span class="tl-time">${fmtDate(ev.ts)}</span>
-          <span class="tl-chip">${esc(ev.kind)}</span>
-          <span style="font-weight:500">${esc(ev.label)}</span>
-        </div>
-      `;
+    } catch (e) {
+      pullEl.innerHTML = `<p class="muted small" style="color:#ef4444">Error loading pull list: ${e.message}</p>`;
     }
-
-    $('drawer-body').innerHTML = html;
-  } catch (e) {
-    $('drawer-body').innerHTML = `<p style="color:var(--crimson-crit)">⚠️ ${esc(e.message)}</p>`;
   }
-}
 
-async function renderDrawerPullList() {
-  $('drawer-icon').textContent = '📋';
-  $('drawer-title').textContent = `Kitchen Menu Pull Matrix // ${selected.id}`;
-  $('drawer-body').innerHTML = '<p class="mono-meta">Calculating affected kitchen menus...</p>';
-
-  try {
-    const d = await api(`/api/pull-list/${encodeURIComponent(selected.id)}`);
-    if (!d.pull_list || !d.pull_list.length) {
-      $('drawer-body').innerHTML = '<p class="mono-meta" style="color:var(--emerald-safe)">✓ No kitchens or dishes currently flagged for recall under the selected scope.</p>';
-      return;
-    }
-
-    let html = `
-      <p class="mono-meta" style="margin-bottom:14px">
-        Mandatory Menu Deactivations for <b>${esc(d.batch)}</b> across Delhi NCR cloud kitchens:
-      </p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
-    `;
-
-    for (const k of d.pull_list) {
-      html += `
-        <div class="panel-section" style="border-color:rgba(255,45,85,0.3)">
-          <div style="font-weight:700;color:var(--cyan-neon);font-size:13px">${esc(k.kitchen)}</div>
-          <div class="mono-meta" style="margin-bottom:8px">${esc(k.location || 'Delhi NCR')}</div>
-          <p style="font-size:11px;font-weight:600;color:#fecaca;margin-bottom:4px">Dishes to remove from menu:</p>
-          <ul style="padding-left:18px;font-size:12px;color:var(--txt-bright)">
-            ${k.pull_dishes.map((dp) => `<li><b>${esc(dp.name)}</b> <span class="mono-meta">(${esc(dp.id)})</span></li>`).join('')}
-          </ul>
-        </div>
-      `;
-    }
-
-    html += `</div>`;
-    $('drawer-body').innerHTML = html;
-  } catch (e) {
-    $('drawer-body').innerHTML = `<p style="color:var(--crimson-crit)">⚠️ ${esc(e.message)}</p>`;
-  }
-}
-
-async function renderDrawerFssai() {
-  $('drawer-icon').textContent = '📑';
-  $('drawer-title').textContent = `FSSAI Digital Recall Dossier // ${selected.id}`;
-  $('drawer-body').innerHTML = '<p class="mono-meta">Compiling regulatory report from live audit events...</p>';
-
-  try {
-    const rep = await api(`/api/report/${encodeURIComponent(selected.id)}`);
-    const jsonStr = JSON.stringify(rep, null, 2);
-
-    let html = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div>
-          <span class="status-badge RED">${esc(rep.product.riskStatus)}</span>
-          <span class="mono-meta" style="margin-left:8px">Generated: ${fmtDate(rep.generatedAt)}</span>
-        </div>
-        <div>
-          <button class="hud-btn primary" id="btn-dl-report" style="font-size:11px">⬇ Download JSON</button>
-          <button class="hud-btn secondary" id="btn-copy-report" style="font-size:11px">⧉ Copy JSON</button>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
-        <div class="panel-section" style="text-align:center"><div class="mono-meta">Kitchens</div><b style="font-size:18px;color:var(--cyan-neon)">${rep.impactSummary.kitchens}</b></div>
-        <div class="panel-section" style="text-align:center"><div class="mono-meta">Dishes</div><b style="font-size:18px;color:var(--amber-warn)">${rep.impactSummary.dishes}</b></div>
-        <div class="panel-section" style="text-align:center"><div class="mono-meta">Orders</div><b style="font-size:18px;color:var(--teal-dispatch)">${rep.impactSummary.orders}</b></div>
-        <div class="panel-section" style="text-align:center"><div class="mono-meta">Consumers</div><b style="font-size:18px;color:var(--crimson-crit)">${rep.impactSummary.customers}</b></div>
-      </div>
-      <pre class="cyber-input mono-meta" style="max-height:220px;overflow-y:auto;white-space:pre-wrap;font-size:11px;background:#030712;padding:12px">${esc(jsonStr)}</pre>
-    `;
-
-    $('drawer-body').innerHTML = html;
-
-    $('btn-dl-report').onclick = () => {
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `recall_report_${selected.id}.json`;
-      a.click();
-      toast('Recall report downloaded', 'ok');
-    };
-
-    $('btn-copy-report').onclick = () => {
-      navigator.clipboard.writeText(jsonStr);
-      toast('Report copied to clipboard', 'ok');
-    };
-  } catch (e) {
-    $('drawer-body').innerHTML = `<p style="color:var(--crimson-crit)">⚠️ ${esc(e.message)}</p>`;
-  }
-}
-
-/* --------------------------------------------------------------------------
-   Data Loading: Telemetry, Filters, Network
-   -------------------------------------------------------------------------- */
-async function loadFilters() {
-  const o = await api('/api/filters');
-  const fill = (id, arr) => {
-    const s = $(id);
-    s.innerHTML = s.children[0].outerHTML;
-    arr.forEach((v) => {
-      const op = document.createElement('option');
-      op.value = v;
-      op.textContent = v;
-      s.appendChild(op);
-    });
-  };
-
-  fill('f-supplier', o.suppliers.map((s) => `${s.id} — ${s.name}`));
-  fill('f-kitchen', o.kitchens.map((k) => `${k.id} — ${k.name}`));
-  fill('f-ingredient', o.ingredients);
-  fill('f-location', o.locations);
-}
-
-async function loadKpis() {
-  const k = await api('/api/kpis');
-  const c = k.counts;
-  const chip = (l, v) => `<span class="kchip">${l} <b>${v ?? 0}</b></span>`;
-
-  $('kpis').innerHTML = [
-    chip('Suppliers', c.Supplier),
-    chip('Batches', c.Batch),
-    chip('Kitchens', c.CloudKitchen),
-    chip('Dishes', c.Dish),
-    chip('Orders', c.Order),
-    chip('Consumers', c.Customer),
-    chip('🚫 Blocked', k.blocked_dishes ?? k.blocked_menu_items ?? 0),
-    chip('🧊 Holds', k.kitchen_holds ?? 0),
-  ].join('') +
-  k.flagged.map((f) => `
-    <span class="kchip flag ${f.status.toLowerCase()}">
-      ${STATUS_EMOJI[f.status]} ${esc(f.id)}
-    </span>
-  `).join('');
-
-  const anyRed = k.flagged.some((f) => f.status === 'RED');
-  const pill = $('statuspill');
-  pill.className = 'status-pill ' + (anyRed ? 'bad' : (k.flagged.length ? 'warn' : 'ok'));
-  $('statuspill-text').textContent = anyRed
-    ? '● CRITICAL RECALL ACTIVE'
-    : (k.flagged.length ? '● INVESTIGATION WINDOW' : '● ALL SYSTEMS NOMINAL');
-}
-
-async function loadNetwork() {
-  const p = new URLSearchParams();
-  const q = $('f-q').value.trim();
-  if (q) p.set('q', q);
-
-  [['f-supplier', 'supplier'], ['f-kitchen', 'kitchen'], ['f-ingredient', 'ingredient'], ['f-location', 'location']]
-    .forEach(([id, param]) => {
-      const v = $(id).value;
-      if (v && v !== '(any)' && !v.startsWith('(All')) {
-        p.set(param, v.split(' — ')[0]);
-      }
-    });
-
-  const st = [];
-  if ($('f-green').checked) st.push('GREEN');
-  if ($('f-yellow').checked) st.push('YELLOW');
-  if ($('f-red').checked) st.push('RED');
-  if (st.length && st.length < 3) st.forEach((s) => p.append('statuses', s));
-
-  if ($('f-from').value) p.set('date_from', $('f-from').value);
-  if ($('f-to').value) p.set('date_to', $('f-to').value);
-
-  const data = await api('/api/network?' + p.toString());
-  blast = null;
-  hlNodes.clear();
-  hlEdgeKeys.clear();
-  selected = null;
-
-  cy.elements().remove();
-  addStore(data);
-
-  $('nodecount').textContent = `Topology: ${data.nodes.length} nodes · ${data.edges.length} relationships live from Neo4j`;
-  showBanner();
-  clearSelection(false);
-  updateToolbar();
-}
-
-/* --------------------------------------------------------------------------
-   Quick Scenario Presets
-   -------------------------------------------------------------------------- */
-function setupScenarios() {
-  // Scenario 1: Paneer Contamination Recall
-  $('scen-paneer').onclick = async () => {
-    toast('Triggering Scenario: BATCH-PANEER-001 Incident', 'warn');
-    await loadNetwork();
-    selectNodeById('BATCH-PANEER-001', 'Batch');
-    await runBlast('BATCH-PANEER-001', false);
-    openDrawer('pulllist');
-  };
-
-  // Scenario 2: Cream Suspect Window
-  $('scen-cream').onclick = async () => {
-    toast('Triggering Scenario: BATCH-CREAM-001 Investigation', 'warn');
-    await loadNetwork();
-    selectNodeById('BATCH-CREAM-001', 'Batch');
-    await runBlast('BATCH-CREAM-001', true);
-    openDrawer('timeline');
-  };
-
-  // Scenario 3: Gopal Dairy Network Blast
-  $('scen-gopal').onclick = async () => {
-    toast('Triggering Scenario: Gopal Dairy Vendor Exposure', 'ok');
-    await loadNetwork();
-    selectNodeById('SUP-002', 'Supplier');
+  // 4. Audit Trail Table
+  if (auditEl) {
     try {
-      const d = await api('/api/blast-supplier/SUP-002');
-      addStore(d.graph);
-      blast = {
-        nodeIds: new Set(d.node_ids),
-        edgeKeys: new Set(d.edges.map((e) => `${e.type}|${e.source}|${e.target}`)),
-        counts: d.counts,
-        window: d.window,
-        batch: d.batch,
-        simulateOnly: true,
-      };
-      applyBlast();
-      showBanner();
+      const auditRows = await api('/api/audit?limit=20');
+      if (auditRows.length === 0) {
+        auditEl.innerHTML = '<p class="muted small" style="padding:12px">No audit events recorded yet.</p>';
+      } else {
+        auditEl.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Detail</th>
+                <th>Actor</th>
+                <th>Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${auditRows.slice(0, 8).map(e => `
+                <tr>
+                  <td><span class="tag ${e.type === 'STATUS_TRANSITION' ? 'pending' : e.type === 'MENU_PULL' ? 'pulled' : 'live'}">${e.type}</span></td>
+                  <td>${e.detail || (e.fromStatus ? `${e.fromStatus} → ${e.toStatus}: ${e.reason || ''}` : '—')}</td>
+                  <td class="muted">${e.actor || 'system'}</td>
+                  <td class="muted" style="font-family:var(--font-mono);font-size:11px">${fmtDate(e.timestamp)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+    } catch (e) {
+      auditEl.innerHTML = `<p class="muted small" style="color:#ef4444">Error loading audit: ${e.message}</p>`;
+    }
+  }
+
+  // 5. Customer Outreach Table
+  if (outreachEl && activeWatchBatch) {
+    try {
+      const impact = await api(`/batches/${encodeURIComponent(activeWatchBatch)}/impact`);
+      const orders = impact.orders || [];
+
+      if (orders.length === 0) {
+        outreachEl.innerHTML = '<p class="muted small" style="padding:12px">No customer orders fall within the contamination window.</p>';
+      } else {
+        outreachEl.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <span class="muted small">${orders.length} affected customer orders identified</span>
+            <button class="btn primary" onclick="notifyBatchCustomers('${activeWatchBatch}')">📱 Notify All (${orders.length})</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Phone / Email</th>
+                <th>Dishes Ordered</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orders.slice(0, 12).map(o => `
+                <tr>
+                  <td><b>${o.customer || o.customer_id}</b></td>
+                  <td class="muted" style="font-family:var(--font-mono);font-size:11px">${o.phone || o.email || '—'}</td>
+                  <td>${(o.dishes || []).join(', ')}</td>
+                  <td>
+                    <span class="tag ${o.notification_status === 'NOTIFIED' ? 'notified' : 'pending'}">${o.notification_status || 'PENDING'}</span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+    } catch (e) {
+      outreachEl.innerHTML = `<p class="muted small" style="color:#ef4444">Error loading customer outreach: ${e.message}</p>`;
+    }
+  }
+}
+
+function focusPullList(batchId) {
+  activeWatchBatch = batchId;
+  renderDashboard();
+}
+
+function focusOnGraph(label, id) {
+  setView('graph');
+  setTimeout(() => {
+    const node = cy.getElementById(id);
+    if (node.length) {
+      cy.elements().removeClass('selected');
+      node.addClass('selected');
+      selectedNode = { id, label, props: node.data('props') || {} };
+      renderInspector(selectedNode);
+      traceCorridor(label, id, 'down');
+      cy.animate({ center: { eles: node }, zoom: 1.4, duration: 400 });
+    }
+  }, 100);
+}
+
+function triggerBlastAndSwitch(batchId) {
+  setView('graph');
+  setTimeout(() => {
+    runBlast(batchId);
+    const node = cy.getElementById(batchId);
+    if (node.length) {
+      cy.animate({ center: { eles: node }, zoom: 1.2, duration: 400 });
+    }
+  }, 100);
+}
+
+// -----------------------------------------------------------------------------
+// Command Bar (⌘ Commands + >_ Cypher Console)
+// -----------------------------------------------------------------------------
+function initCommandBar() {
+  const mCmd = $('m-cmd');
+  const mCy = $('m-cy');
+  const cmdInput = $('cmd');
+  const cmdGo = $('cmd-go');
+  const cmdChips = $('cmdchips');
+
+  if (mCmd && mCy) {
+    mCmd.onclick = () => {
+      cmdMode = 'cmd';
+      mCmd.classList.add('on');
+      mCy.classList.remove('on');
+      cmdInput.placeholder = 'contaminated · trace BATCH-PANEER-001 · pull list · supplier Gopal · paneer · clear';
+      renderCommandChips();
+    };
+
+    mCy.onclick = () => {
+      cmdMode = 'cy';
+      mCy.classList.add('on');
+      mCmd.classList.remove('on');
+      cmdInput.placeholder = 'MATCH (b:Batch)-[:DELIVERED_TO]->(k) RETURN b.id, k.name LIMIT 20';
+      renderCommandChips();
+    };
+  }
+
+  if (cmdGo && cmdInput) {
+    cmdGo.onclick = () => executeCommand(cmdInput.value.trim());
+    cmdInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        executeCommand(cmdInput.value.trim());
+      }
+    };
+  }
+
+  renderCommandChips();
+}
+
+function renderCommandChips() {
+  const chipsEl = $('cmdchips');
+  if (!chipsEl) return;
+
+  const chips = cmdMode === 'cmd' ? [
+    'contaminated',
+    'trace BATCH-PANEER-001',
+    'pull list',
+    'supplier Gopal',
+    'paneer',
+    'orders on',
+    'clear',
+    'reset'
+  ] : [
+    'MATCH (b:Batch) RETURN b.id, b.status LIMIT 10',
+    'MATCH (s:Supplier)-[:SUPPLIES]->(b) RETURN s.name, b.id',
+    'MATCH (k:CloudKitchen)-[:USED_IN]->(d:Dish) RETURN k.name, d.name LIMIT 10'
+  ];
+
+  chipsEl.innerHTML = chips.map(c => `
+    <span class="cchip" onclick="setAndRunCommand('${c.replace(/'/g, "\\'")}')">${c}</span>
+  `).join('');
+}
+
+function setAndRunCommand(str) {
+  const input = $('cmd');
+  if (input) {
+    input.value = str;
+    executeCommand(str);
+  }
+}
+
+async function executeCommand(cmd) {
+  if (!cmd) return;
+
+  if (cmdMode === 'cy') {
+    // Cypher Console Mode
+    try {
+      toast('Executing Cypher query...', 'info');
+      const res = await api('/api/query/cypher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: cmd })
+      });
+
+      if (res.nodes && res.nodes.length > 0) {
+        // Merge nodes/edges into cytoscape
+        cy.add(res.nodes.map(n => ({
+          group: 'nodes',
+          data: {
+            id: n.id,
+            label: n.label,
+            labelText: getNodeLabel(n.label, n.props),
+            bg: getNodeColor(n.label, n.props),
+            size: 32,
+            props: n.props || {}
+          }
+        })));
+        applyTopologicalLayout(false);
+      }
+
+      openDrawer(`>_ Cypher Results (${res.rows?.length || 0} rows)`, renderCypherTable(res));
+      toast(`Query executed successfully (${res.rows?.length || 0} rows)`, 'ok');
     } catch (e) {
       toast(e.message, 'err');
     }
-  };
+    return;
+  }
 
-  // Reset Network
-  $('scen-reset').onclick = async () => {
-    $('f-q').value = '';
-    ['f-supplier', 'f-kitchen', 'f-ingredient', 'f-location'].forEach((i) => $(i).selectedIndex = 0);
-    ['f-from', 'f-to'].forEach((i) => $(i).value = '');
-    ['f-green', 'f-yellow', 'f-red'].forEach((i) => $(i).checked = true);
-    await loadNetwork();
-    toast('Full network overview restored', 'ok');
-  };
+  // Commands Mode
+  const parts = cmd.split(' ');
+  const verb = parts[0].toLowerCase();
+  const arg = parts.slice(1).join(' ').trim();
+
+  if (verb === 'contaminated' || verb === 'watchlist' || verb === 'recall') {
+    runContaminationMap();
+  } else if (verb === 'trace') {
+    if (parts[1] && parts[1].toLowerCase() === 'up') {
+      const targetId = parts[2] || (selectedNode ? selectedNode.id : null);
+      if (targetId) traceCorridor('Batch', targetId, 'up');
+      else toast('Specify node ID: trace up <ID>', 'warn');
+    } else {
+      const targetId = arg || (selectedNode ? selectedNode.id : null);
+      if (targetId) traceCorridor('Batch', targetId, 'down');
+      else toast('Specify node ID: trace <ID>', 'warn');
+    }
+  } else if (verb === 'blast' || verb === 'impact') {
+    const targetId = arg || (selectedNode ? selectedNode.id : 'BATCH-PANEER-001');
+    runBlast(targetId);
+  } else if (verb === 'pull' || verb === 'pulllist') {
+    const targetId = arg || (selectedNode ? selectedNode.id : (activeWatchBatch || 'BATCH-PANEER-001'));
+    openDrawer(`Kitchen Pull List (${targetId})`, await fetchPullListHtml(targetId));
+  } else if (verb === 'timeline') {
+    const targetId = arg || (selectedNode ? selectedNode.id : 'BATCH-PANEER-001');
+    openBatchTimeline(targetId);
+  } else if (verb === 'report' || verb === 'fssai') {
+    const targetId = arg || (selectedNode ? selectedNode.id : 'BATCH-PANEER-001');
+    openRecallReport(targetId);
+  } else if (verb === 'clear') {
+    clearSelection();
+    clearBlast();
+    toast('Simulation cleared', 'info');
+  } else if (verb === 'reset') {
+    resetNetwork();
+  } else if (verb === 'supplier') {
+    $('f-supplier').value = arg || '(any)';
+    loadNetwork().catch(e => toast(e.message, 'err'));
+  } else if (verb === 'kitchen') {
+    $('f-kitchen').value = arg || '(any)';
+    loadNetwork().catch(e => toast(e.message, 'err'));
+  } else if (verb === 'orders') {
+    $('f-orders').checked = arg.toLowerCase() === 'on';
+    loadNetwork().catch(e => toast(e.message, 'err'));
+  } else {
+    // Default search in f-q
+    $('f-q').value = cmd;
+    loadNetwork().catch(e => toast(e.message, 'err'));
+  }
 }
 
-/* --------------------------------------------------------------------------
-   Boot & Lifecycle Initialization
-   -------------------------------------------------------------------------- */
-window.addEventListener('DOMContentLoaded', async () => {
-  if (!window.cytoscape) {
-    document.body.innerHTML = `
-      <div style="margin:80px auto;max-width:540px;padding:24px;border:1px solid #ff2d55;border-radius:12px;background:#030712;color:#fecaca">
-        <h3>Network Error</h3>
-        <p>Cytoscape.js failed to load from CDN. Verify network access to cdn.jsdelivr.net.</p>
+function renderCypherTable(res) {
+  const cols = res.columns || [];
+  const rows = res.rows || [];
+
+  return `
+    <div style="font-family:var(--font-mono);font-size:12px">
+      <div style="background:rgba(0,0,0,0.3);padding:8px 12px;border-radius:6px;margin-bottom:12px;color:var(--txt-muted)">
+        ${res.query}
       </div>
-    `;
-    return;
-  }
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            ${cols.map(c => `<th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--panel-border);color:var(--cyan-neon)">${c}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr>
+              ${row.map(cell => `<td style="padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.05)">${cell}</td>`).join('')}
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
 
-  initCy();
-  clearSelection(false);
+// -----------------------------------------------------------------------------
+// Drawer Modules (Timeline, FSSAI Report, Pull List)
+// -----------------------------------------------------------------------------
+function openDrawer(title, contentHtml) {
+  const drawer = $('drawer');
+  const titleEl = $('drawer-title');
+  const bodyEl = $('drawer-body');
 
+  if (!drawer) return;
+
+  if (titleEl) titleEl.textContent = title;
+  if (bodyEl) bodyEl.innerHTML = contentHtml;
+
+  drawer.classList.remove('hidden');
+}
+
+function closeDrawer() {
+  const drawer = $('drawer');
+  if (drawer) drawer.classList.add('hidden');
+}
+
+async function openBatchTimeline(batchId) {
   try {
-    await loadFilters();
-    await loadKpis();
-    await loadNetwork();
-  } catch (e) {
-    document.body.innerHTML = `
-      <div style="margin:80px auto;max-width:540px;padding:24px;border:1px solid #ff2d55;border-radius:12px;background:#030712;color:#fecaca">
-        <h3>Backend Disconnected</h3>
-        <p>${esc(e.message)}</p>
-        <p style="margin-top:12px;font-size:12px;color:#94a3b8">Run: <code>uvicorn web_app:app --reload</code></p>
+    const data = await api(`/api/timeline/${encodeURIComponent(batchId)}`);
+    const events = data.events || [];
+
+    const html = `
+      <div style="max-width:720px;margin:0 auto">
+        <div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--panel-border)">
+          <h3 style="font-size:15px;color:var(--txt-bright);font-weight:700">Audit & Consumption Timeline: ${batchId}</h3>
+          <p class="muted small">${data.ingredient || ''} · Supplied by ${data.supplier?.name || ''} · Status: <b>${data.status}</b></p>
+        </div>
+        <div class="tl-stream">
+          ${events.map(ev => `
+            <div class="tl-row" style="display:flex;gap:14px;padding:8px 0;border-bottom:1px dashed rgba(255,255,255,0.08)">
+              <span class="tl-time" style="font-family:var(--font-mono);font-size:11px;color:var(--txt-muted);min-width:130px">${fmtDate(ev.time)}</span>
+              <span class="tl-marker" style="color:${ev.type.includes('RED') ? '#ef4444' : ev.type.includes('YELLOW') ? '#f59e0b' : '#38bdf8'}">●</span>
+              <div class="tl-detail" style="flex:1">
+                <b>${ev.event}</b>
+                ${ev.detail ? `<div class="muted small" style="margin-top:2px">${ev.detail}</div>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
-    return;
+
+    openDrawer(`🕰 Incident Timeline (${batchId})`, html);
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+async function openRecallReport(batchId) {
+  try {
+    const r = await api(`/api/report/${encodeURIComponent(batchId)}`);
+    const p = r.product || {};
+    const imp = r.impactSummary || {};
+
+    const html = `
+      <div style="max-width:800px;margin:0 auto;font-family:var(--font-sans)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--panel-border);padding-bottom:14px;margin-bottom:16px">
+          <div>
+            <span class="tag" style="background:rgba(56,189,248,0.2);color:#7dd3fc;border:1px solid rgba(56,189,248,0.4)">FSSAI FoSCoS Aligned</span>
+            <h2 style="font-size:18px;font-weight:800;color:var(--txt-bright);margin-top:6px">${r.reportType}</h2>
+            <p class="muted small">Generated: ${fmtDate(r.generatedAt)}</p>
+          </div>
+          <button class="btn primary" onclick="window.print()">🖨 Print / Export PDF</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+          <div class="panel">
+            <h2>Product & Batch Identification</h2>
+            <p><b>Batch ID:</b> ${p.batchId}</p>
+            <p><b>Ingredient:</b> ${p.ingredient}</p>
+            <p><b>Supplier:</b> ${p.supplier}</p>
+            <p><b>Risk Level:</b> <span class="tag ${String(p.riskStatus).toLowerCase()}">${p.riskStatus}</span></p>
+            <p><b>Contamination Reason:</b> ${p.statusReason || '—'}</p>
+          </div>
+          <div class="panel">
+            <h2>Downstream Exposure Blast</h2>
+            <p><b>Affected Cloud Kitchens:</b> ${imp.kitchens || 0}</p>
+            <p><b>Affected Dishes:</b> ${imp.dishes || 0}</p>
+            <p><b>Orders Impacted:</b> ${imp.orders || 0}</p>
+            <p><b>Consumers Impacted:</b> ${imp.customers || 0}</p>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:16px">
+          <h2>Kitchen Containment & Isolation Status</h2>
+          <table>
+            <thead>
+              <tr><th>Kitchen</th><th>Location</th><th>Dishes to Quarantine</th><th>Action Status</th></tr>
+            </thead>
+            <tbody>
+              ${(r.kitchenPullLists || []).map(k => `
+                <tr>
+                  <td><b>${k.kitchen}</b></td>
+                  <td>${k.location || 'NCR'}</td>
+                  <td>${(k.pull_dishes || []).map(d => d.name).join(', ')}</td>
+                  <td><span class="tag ${k.pulled ? 'pulled' : 'pending'}">${k.pulled ? 'QUARANTINED' : 'PENDING'}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel">
+          <h2>Regulatory Notice</h2>
+          <p class="muted small">${r.complianceNote}</p>
+        </div>
+      </div>
+    `;
+
+    openDrawer(`📜 Recall Dossier (${batchId})`, html);
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+async function fetchPullListHtml(batchId) {
+  const pullData = await api(`/api/pull-list/${encodeURIComponent(batchId)}`);
+  const list = pullData.pull_list || [];
+
+  return `
+    <div style="max-width:760px;margin:0 auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:8px">Kitchen</th>
+            <th style="text-align:left;padding:8px">Location</th>
+            <th style="text-align:left;padding:8px">Affected Dishes</th>
+            <th style="text-align:left;padding:8px">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${list.map(k => `
+            <tr>
+              <td style="padding:8px"><b>${k.kitchen}</b></td>
+              <td style="padding:8px" class="muted">${k.location || 'NCR'}</td>
+              <td style="padding:8px">${(k.pull_dishes || []).map(d => d.name).join(', ')}</td>
+              <td style="padding:8px"><span class="tag ${k.pulled ? 'pulled' : 'pending'}">${k.pulled ? 'PULLED' : 'ACTIVE'}</span></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// -----------------------------------------------------------------------------
+// App Initialization & Event Listeners
+// -----------------------------------------------------------------------------
+window.addEventListener('DOMContentLoaded', async () => {
+  initCytoscape();
+  await initFilters();
+  initCommandBar();
+
+  // View Switching Buttons
+  $$('.viewbtn').forEach(btn => {
+    btn.onclick = () => setView(btn.getAttribute('data-v'));
+  });
+
+  // Filter Buttons
+  const btnApply = $('btn-apply');
+  if (btnApply) {
+    btnApply.onclick = () => loadNetwork().catch(e => toast(e.message, 'err'));
   }
 
-  setupScenarios();
-
-  // Sidebar Filter Actions
-  $('btn-apply').onclick = () => loadNetwork().catch((e) => toast(e.message, 'err'));
-  $('btn-resetnet').onclick = () => $('scen-reset').click();
+  const btnReset = $('btn-resetnet');
+  if (btnReset) {
+    btnReset.onclick = () => resetNetwork();
+  }
 
   // Toolbar Actions
-  $('btn-up').onclick = () => doTrace('up');
-  $('btn-down').onclick = () => doTrace('down');
-  $('btn-expand').onclick = async () => {
-    if (!selected) return;
-    try {
-      const data = await api(`/api/expand/${encodeURIComponent(selected.label)}/${encodeURIComponent(selected.id)}`);
-      addStore(data);
-      applyLayeredLayout(true);
-    } catch (e) {
-      toast(e.message, 'err');
+  $('btn-up').onclick = () => {
+    if (selectedNode) traceCorridor(selectedNode.label, selectedNode.id, 'up');
+  };
+
+  $('btn-expand').onclick = () => {
+    if (selectedNode) expandNodeNeighborhood(selectedNode.label, selectedNode.id);
+  };
+
+  $('btn-collapse').onclick = () => {
+    if (selectedNode) {
+      toast('Collapsed node neighborhood', 'info');
+      clearSelection();
     }
   };
-  $('btn-collapse').onclick = collapseBranch;
+
   $('btn-blast').onclick = () => {
-    if (selected && selected.label === 'Batch') runBlast(selected.id, true);
+    if (selectedNode) runBlast(selectedNode.id);
   };
-  $('btn-clearblast').onclick = clearBlast;
-  $('btn-pulllist').onclick = () => openDrawer('pulllist');
-  $('btn-timeline').onclick = () => openDrawer('timeline');
 
-  // Layout Buttons
-  $('btn-layered').onclick = () => {
-    $('btn-layered').classList.add('active');
-    $('btn-force').classList.remove('active');
-    applyLayeredLayout(true);
+  $('btn-clearblast').onclick = () => clearBlast();
+
+  $('btn-timeline').onclick = () => {
+    if (selectedNode && selectedNode.label === 'Batch') openBatchTimeline(selectedNode.id);
   };
-  $('btn-force').onclick = () => {
-    $('btn-force').classList.add('active');
-    $('btn-layered').classList.remove('active');
-    cy.layout({
-      name: 'cose',
-      animate: true,
-      animationDuration: 600,
-      idealEdgeLength: 120,
-      nodeOverlap: 20,
-    }).run();
+
+  $('btn-pulllist').onclick = () => {
+    if (selectedNode && selectedNode.label === 'Batch') {
+      fetchPullListHtml(selectedNode.id).then(h => openDrawer(`Kitchen Pull List (${selectedNode.id})`, h));
+    }
   };
-  $('btn-fit').onclick = () => cy.fit(undefined, 50);
 
-  // Drawer Tabs & Close
-  $('drawer-close').onclick = () => $('drawer').classList.add('hidden');
-  $('tab-timeline').onclick = () => openDrawer('timeline');
-  $('tab-pulllist').onclick = () => openDrawer('pulllist');
-  $('tab-fssai').onclick = () => openDrawer('fssai');
+  $('btn-layered').onclick = () => applyTopologicalLayout(true);
+  $('btn-fit').onclick = () => cy && cy.fit(undefined, 50);
 
-  // Keyboard Shortcuts
+  // Drawer Close
+  $('drawer-close').onclick = () => closeDrawer();
+
+  // Global Keyboard Shortcuts
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
     if (e.key === 'Escape') {
+      closeDrawer();
       clearBlast();
       clearSelection();
-      $('drawer').classList.add('hidden');
     } else if (e.key === ' ' || e.key === 'Spacebar') {
       e.preventDefault();
-      cy.fit(undefined, 50);
+      if (cy) cy.fit(undefined, 50);
     } else if (e.key === '1') {
-      $('btn-layered').click();
-    } else if (e.key === '2') {
-      $('btn-force').click();
-    } else if ((e.key === 'b' || e.key === 'B') && selected && selected.label === 'Batch') {
-      runBlast(selected.id, true);
-    } else if ((e.key === 't' || e.key === 'T') && selected && selected.label === 'Batch') {
-      openDrawer('timeline');
-    } else if ((e.key === 'p' || e.key === 'P') && selected && selected.label === 'Batch') {
-      openDrawer('pulllist');
+      applyTopologicalLayout(true);
+    } else if ((e.key === 'b' || e.key === 'B') && selectedNode) {
+      runBlast(selectedNode.id);
+    } else if ((e.key === 't' || e.key === 'T') && selectedNode && selectedNode.label === 'Batch') {
+      openBatchTimeline(selectedNode.id);
     }
   });
+
+  // Initial Load
+  await refreshTelemetry();
+  await loadNetwork();
+  renderInspector(null);
 });
+
+// Explicit window bindings for inline HTML onclick handlers
+window.promptFlag = promptFlag;
+window.pullBatchMenu = pullBatchMenu;
+window.restoreBatchMenu = restoreBatchMenu;
+window.notifyBatchCustomers = notifyBatchCustomers;
+window.openBatchTimeline = openBatchTimeline;
+window.openRecallReport = openRecallReport;
+window.expandNodeNeighborhood = expandNodeNeighborhood;
+window.focusPullList = focusPullList;
+window.focusOnGraph = focusOnGraph;
+window.triggerBlastAndSwitch = triggerBlastAndSwitch;
+window.setAndRunCommand = setAndRunCommand;
