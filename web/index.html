@@ -1,101 +1,280 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Food Traceability Graph — Recall Mission Control</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css"/>
-<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TRACE-NCR // Recall Mission Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
 </head>
 <body>
 
-<header id="topbar">
-  <div class="brand">
-    <div class="logo">FG</div>
-    <div>
-      <h1>Food Traceability Graph</h1>
-      <p class="sub">Delhi-NCR cloud kitchens · live Neo4j</p>
-    </div>
-  </div>
-  <div id="kpis" class="kpis"></div>
-  <div id="statuspill" class="pill ok">● BOOTING</div>
-</header>
-
-<div id="recallbanner" class="banner hidden"></div>
-
-<main id="layout">
-  <aside id="sidebar">
-    <div class="panel">
-      <h2>Search &amp; filters</h2>
-      <input id="f-q" placeholder="🔍 batch / ingredient / supplier / kitchen"/>
-      <label>Supplier</label><select id="f-supplier"><option value="(any)">(any)</option></select>
-      <label>Cloud kitchen</label><select id="f-kitchen"><option value="(any)">(any)</option></select>
-      <label>Ingredient</label><select id="f-ingredient"><option value="(any)">(any)</option></select>
-      <label>Location</label><select id="f-location"><option value="(any)">(any)</option></select>
-      <div class="row2">
-        <div><label>Activity from</label><input type="date" id="f-from"/></div>
-        <div><label>to</label><input type="date" id="f-to"/></div>
+  <!-- Top Flight Deck Header -->
+  <header id="topbar">
+    <div class="brand">
+      <div class="logo-box">
+        <div class="logo-radar"></div>
+        <span class="logo-txt">FN</span>
       </div>
-      <label class="lbl-top">Batch risk</label>
-      <div class="statusrow">
-        <label class="chk"><input type="checkbox" id="f-green" checked/> 🟢 Green</label>
-        <label class="chk"><input type="checkbox" id="f-yellow" checked/> 🟡 Yellow</label>
-        <label class="chk"><input type="checkbox" id="f-red" checked/> 🔴 Red</label>
+      <div>
+        <div class="title-row">
+          <h1>TRACE-NCR</h1>
+          <span class="hud-tag">FLIGHT DECK v2.4</span>
+        </div>
+        <p class="subtitle">Food Supply-Chain Traceability &amp; Recall Engine · Neo4j Live</p>
       </div>
-      <button id="btn-apply" class="btn primary wide">Apply filters</button>
-      <button id="btn-resetnet" class="btn wide">Reset network</button>
-      <p id="nodecount" class="muted small"></p>
     </div>
-    <div class="panel">
-      <h2>Reading the graph</h2>
-      <p class="muted small">Arrow = flow direction (Supplier → Customer). Edge labels show quantity / dates / timestamps — hover any node for its full property card. Click a node to inspect, then use the toolbar above the canvas to trace paths or detonate a recall.</p>
-    </div>
-  </aside>
 
-  <section id="stage">
-    <div id="toolbar">
-      <button id="btn-up" class="btn" disabled>⬆ Upstream</button>
-      <button id="btn-down" class="btn" disabled>⬇ Downstream</button>
-      <button id="btn-expand" class="btn" disabled>➕ Expand +1</button>
-      <button id="btn-collapse" class="btn" disabled>➖ Collapse</button>
-      <span class="sep"></span>
-      <button id="btn-blast" class="btn danger" disabled>💥 Simulate recall</button>
-      <button id="btn-clearblast" class="btn" disabled>✖ Clear sim</button>
-      <button id="btn-timeline" class="btn" disabled>🕰 Timeline</button>
-      <span class="sep"></span>
-      <button id="btn-layered" class="btn">▤ Layered</button>
-      <button id="btn-force" class="btn">✳ Force</button>
-      <button id="btn-fit" class="btn">⤢ Fit</button>
+    <!-- Quick Scenario Presets -->
+    <div class="scenario-bar" id="scenario-bar">
+      <span class="scenario-label">PRESETS</span>
+      <button class="pill-btn danger" id="scen-paneer" title="Launch Demo: BATCH-PANEER-001 Contamination">
+        <span class="pulse-led red"></span>Paneer Recall (RED)
+      </button>
+      <button class="pill-btn warn" id="scen-cream" title="Launch Demo: BATCH-CREAM-001 Windowed Investigation">
+        <span class="pulse-led yellow"></span>Cream Window (YELLOW)
+      </button>
+      <button class="pill-btn info" id="scen-gopal" title="Vendor Blast: Gopal Dairy Network Exposure">
+        <span class="pulse-led blue"></span>Gopal Dairy Blast
+      </button>
+      <button class="pill-btn reset" id="scen-reset" title="Reset Network to Full Overview">
+        <span>↺</span> Full Overview
+      </button>
     </div>
-    <div id="cy"><div id="tip"></div></div>
-    <div id="legend">
-      <span><i class="dot" style="background:#a78bfa"></i>Supplier</span>
-      <span><i class="dot" style="background:#71717a"></i>Facility</span>
-      <span><i class="dot" style="background:#10b981"></i>Batch 🟢</span>
-      <span><i class="dot" style="background:#f59e0b"></i>Batch 🟡</span>
-      <span><i class="dot" style="background:#ef4444"></i>Batch 🔴</span>
-      <span><i class="dot" style="background:#38bdf8"></i>Kitchen</span>
-      <span><i class="dot" style="background:#fbbf24"></i>Dish</span>
-      <span><i class="dot" style="background:#14b8a6"></i>Order</span>
-      <span><i class="dot" style="background:#fb7185"></i>Customer</span>
-      <span><i class="dot blastdot"></i>💥 blast radius</span>
-      <span><i class="dot tracedot"></i>traced path</span>
+
+    <!-- Real-time KPI Telemetry -->
+    <div id="kpis" class="kpis"></div>
+
+    <!-- Live Status HUD Pill -->
+    <div id="statuspill" class="status-pill ok">
+      <span class="radar-dot"></span>
+      <span id="statuspill-text">● ALL SYSTEMS NOMINAL</span>
     </div>
-  </section>
+  </header>
 
-  <aside id="inspector"><div id="insp-body"></div></aside>
-</main>
+  <!-- High Priority Recall Banner -->
+  <div id="recallbanner" class="banner hidden"></div>
 
-<div id="drawer" class="hidden">
-  <div class="drawer-head">
-    <h2 id="drawer-title">🕰 Timeline</h2>
-    <button id="drawer-close" class="btn">✕ Close</button>
+  <!-- Primary Mission Control Grid -->
+  <main id="layout">
+
+    <!-- Left Surveillance & Filter Console -->
+    <aside id="sidebar" class="hud-panel">
+      <div class="panel-section">
+        <div class="section-hdr">
+          <h2>Surveillance Filters</h2>
+          <span class="section-indicator">ACTIVE</span>
+        </div>
+
+        <div class="search-input-wrap">
+          <span class="search-icon">⌕</span>
+          <input id="f-q" class="cyber-input" type="text" placeholder="Search batch, vendor, kitchen, dish..."/>
+        </div>
+
+        <div class="filter-group">
+          <label for="f-supplier">Supplier / Vendor</label>
+          <select id="f-supplier" class="cyber-select"><option value="(any)">(All Suppliers)</option></select>
+        </div>
+
+        <div class="filter-group">
+          <label for="f-kitchen">Cloud Kitchen Hub</label>
+          <select id="f-kitchen" class="cyber-select"><option value="(any)">(All Kitchens)</option></select>
+        </div>
+
+        <div class="filter-group">
+          <label for="f-ingredient">Ingredient</label>
+          <select id="f-ingredient" class="cyber-select"><option value="(any)">(All Ingredients)</option></select>
+        </div>
+
+        <div class="filter-group">
+          <label for="f-location">NCR District / Location</label>
+          <select id="f-location" class="cyber-select"><option value="(any)">(All Locations)</option></select>
+        </div>
+
+        <div class="filter-group">
+          <label>Activity Window (IST)</label>
+          <div class="date-grid">
+            <input type="date" id="f-from" class="cyber-date" title="From Date"/>
+            <span class="date-sep">→</span>
+            <input type="date" id="f-to" class="cyber-date" title="To Date"/>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <label>Batch Safety Grade</label>
+          <div class="grade-toggles">
+            <label class="toggle-pill green">
+              <input type="checkbox" id="f-green" checked/>
+              <span class="toggle-indicator"></span>
+              <span>GREEN</span>
+            </label>
+            <label class="toggle-pill yellow">
+              <input type="checkbox" id="f-yellow" checked/>
+              <span class="toggle-indicator"></span>
+              <span>YELLOW</span>
+            </label>
+            <label class="toggle-pill red">
+              <input type="checkbox" id="f-red" checked/>
+              <span class="toggle-indicator"></span>
+              <span>RED</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="btn-action-row">
+          <button id="btn-apply" class="hud-btn primary">
+            <span>Apply Parameters</span>
+          </button>
+          <button id="btn-resetnet" class="hud-btn secondary">
+            <span>Reset</span>
+          </button>
+        </div>
+
+        <div class="telemetry-bar">
+          <span id="nodecount" class="mono-meta">Connecting to Neo4j graph...</span>
+        </div>
+      </div>
+
+      <!-- Graph Model Architecture Legend -->
+      <div class="panel-section model-section">
+        <div class="section-hdr">
+          <h2>Topological Model</h2>
+          <span class="badge-mini">LIVE SCHEMA</span>
+        </div>
+        <p class="model-flow">
+          <span class="node-badge sup">Supplier</span> → 
+          <span class="node-badge bat">Batch</span> → 
+          <span class="node-badge kit">Kitchen</span> → 
+          <span class="node-badge dsh">Dish</span>
+        </p>
+        <p class="model-desc">
+          Orders are mapped to kitchen dispatch hubs with <code>[:PLACED_AT]</code> and consumers with <code>[:PLACED_ORDER]</code> for precise recall attribution across Delhi NCR.
+        </p>
+      </div>
+    </aside>
+
+    <!-- Center Interactive Graph Stage -->
+    <section id="stage">
+      
+      <!-- Floating Tactical HUD Toolbar -->
+      <div id="toolbar" class="floating-hud">
+        <div class="tool-section">
+          <button id="btn-up" class="tool-btn" disabled title="Trace Upstream (Predecessors) [U]">
+            <span class="tool-icon">↑</span> Upstream
+          </button>
+          <button id="btn-down" class="tool-btn" disabled title="Trace Downstream (Successors) [D]">
+            <span class="tool-icon">↓</span> Downstream
+          </button>
+          <button id="btn-expand" class="tool-btn" disabled title="Expand 1-Hop Neighborhood [+1]">
+            <span class="tool-icon">+</span> Expand
+          </button>
+          <button id="btn-collapse" class="tool-btn" disabled title="Collapse Subtree [-]">
+            <span class="tool-icon">−</span> Collapse
+          </button>
+        </div>
+
+        <div class="tool-divider"></div>
+
+        <div class="tool-section">
+          <button id="btn-blast" class="tool-btn blast-action" disabled title="Calculate Recall Blast Radius [B]">
+            <span class="tool-icon">💥</span> Blast Radius
+          </button>
+          <button id="btn-clearblast" class="tool-btn" disabled title="Clear Blast Simulation [Esc]">
+            <span class="tool-icon">✕</span> Clear Sim
+          </button>
+          <button id="btn-pulllist" class="tool-btn" disabled title="Open Kitchen Menu Pull List [P]">
+            <span class="tool-icon">📋</span> Pull List
+          </button>
+          <button id="btn-timeline" class="tool-btn" disabled title="Open Incident Timeline [T]">
+            <span class="tool-icon">⏱</span> Timeline
+          </button>
+        </div>
+
+        <div class="tool-divider"></div>
+
+        <div class="tool-section">
+          <button id="btn-layered" class="tool-btn active" title="Hierarchical Supply-Chain Layout [1]">
+            <span class="tool-icon">▤</span> Layered
+          </button>
+          <button id="btn-force" class="tool-btn" title="Force-Directed Organic Layout [2]">
+            <span class="tool-icon">✳</span> Force
+          </button>
+          <button id="btn-fit" class="tool-btn" title="Fit to Viewport [Space]">
+            <span class="tool-icon">⤢</span> Fit
+          </button>
+        </div>
+      </div>
+
+      <!-- Cytoscape Viewport with Cyber Grid Overlay -->
+      <div id="cy-viewport">
+        <div class="viewport-hud-corners">
+          <div class="corner tl"></div>
+          <div class="corner tr"></div>
+          <div class="corner bl"></div>
+          <div class="corner br"></div>
+        </div>
+        <div id="cy"></div>
+        <div id="tip" class="cyber-tooltip"></div>
+      </div>
+
+      <!-- Node & Edge Categorical Legend -->
+      <footer id="legend">
+        <div class="legend-group">
+          <span class="legend-chip"><i class="dot" style="background:#8b5cf6"></i>Supplier</span>
+          <span class="legend-chip"><i class="dot" style="background:#64748b"></i>Facility</span>
+          <span class="legend-chip"><i class="dot" style="background:#10b981"></i>Batch 🟢</span>
+          <span class="legend-chip"><i class="dot" style="background:#f59e0b"></i>Batch 🟡</span>
+          <span class="legend-chip"><i class="dot" style="background:#ef4444"></i>Batch 🔴</span>
+          <span class="legend-chip"><i class="dot" style="background:#0ea5e9"></i>Kitchen</span>
+          <span class="legend-chip"><i class="dot" style="background:#f59e0b"></i>Dish</span>
+          <span class="legend-chip"><i class="dot" style="background:#14b8a6"></i>Order</span>
+          <span class="legend-chip"><i class="dot" style="background:#f43f5e"></i>Customer</span>
+        </div>
+        <div class="legend-group highlights">
+          <span class="legend-chip"><i class="dot blastdot"></i>Recall Blast Zone</span>
+          <span class="legend-chip"><i class="dot tracedot"></i>Traced Corridor</span>
+        </div>
+      </footer>
+    </section>
+
+    <!-- Right Node Telemetry & Intervention Inspector -->
+    <aside id="inspector" class="hud-panel">
+      <div id="insp-body">
+        <div class="insp-empty-state">
+          <div class="empty-crosshair">✛</div>
+          <h3>Select Any Node</h3>
+          <p>Click any Supplier, Batch, Kitchen, Dish, or Order to inspect real-time properties, detonate recall simulations, or enforce containment.</p>
+          <div class="shortcut-hints">
+            <span><kbd>Space</kbd> Fit</span>
+            <span><kbd>B</kbd> Blast</span>
+            <span><kbd>T</kbd> Timeline</span>
+            <span><kbd>Esc</kbd> Clear</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Dockable Sliding Multipurpose Drawer -->
+  <div id="drawer" class="hidden">
+    <div class="drawer-head">
+      <div class="drawer-title-group">
+        <span class="drawer-icon" id="drawer-icon">⏱</span>
+        <h2 id="drawer-title">Incident Dossier</h2>
+      </div>
+      <div class="drawer-tabs" id="drawer-tabs">
+        <button class="dtab-btn active" id="tab-timeline">Incident Timeline</button>
+        <button class="dtab-btn" id="tab-pulllist">Kitchen Pull List</button>
+        <button class="dtab-btn" id="tab-fssai">FSSAI Compliance Report</button>
+      </div>
+      <button id="drawer-close" class="hud-btn icon-btn" title="Close Panel [Esc]">✕</button>
+    </div>
+    <div id="drawer-body"></div>
   </div>
-  <div id="drawer-body"></div>
-</div>
 
-<script src="/app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>
