@@ -9,8 +9,7 @@ LABELS = ("Supplier", "Batch", "Facility", "CloudKitchen", "Dish", "Order", "Cus
 
 DOWN_RULES = {
     "Supplier":     [("SUPPLIES", "dst", "Batch")],
-    "Batch":        [("PROCESSED_AT", "dst", "Facility"),
-                     ("DELIVERED_TO", "dst", "CloudKitchen")],
+    "Batch":        [("DELIVERED_TO", "dst", "CloudKitchen")],
     "Facility":     [],
     "CloudKitchen": [("USED_IN", "dst", "Dish")],
     "Dish":         [("CONTAINS_DISH", "src", "Order")],
@@ -20,7 +19,6 @@ DOWN_RULES = {
 UP_RULES = {
     "Supplier":     [],
     "Batch":        [("SUPPLIES", "src", "Supplier")],
-    "Facility":     [("PROCESSED_AT", "src", "Batch")],
     "CloudKitchen": [("DELIVERED_TO", "src", "Batch"), ("PLACED_AT", "src", "Order")],
     "Dish":         [("USED_IN", "src", "CloudKitchen"), ("CONTAINS_DISH", "src", "Order")],
     "Order":        [("CONTAINS_DISH", "dst", "Dish"), ("PLACED_ORDER", "src", "Customer")],
@@ -130,7 +128,8 @@ def descendants(label, node_id, store):
 
 
 def fetch_subgraph(*, q=None, supplier=None, kitchen=None, ingredient=None,
-                   location=None, statuses=None, date_from=None, date_to=None):
+                   location=None, statuses=None, date_from=None, date_to=None,
+                   include_orders=False, include_facility=False):
     p = {"q": (q or "").lower() or None, "supplier": supplier, "kitchen": kitchen,
          "ingredient": ingredient, "location": (location or "").lower() or None,
          "statuses": statuses or None}
@@ -157,7 +156,7 @@ def fetch_subgraph(*, q=None, supplier=None, kitchen=None, ingredient=None,
         s, b, f, k, d, o, c = r["s"], r["b"], r["f"], r["k"], r["d"], r["o"], r["c"]
         upsert_node(store, "Supplier", s)
         upsert_node(store, "Batch", b)
-        if f:
+        if f and include_facility:
             upsert_node(store, "Facility", f)
             upsert_edge(store, "PROCESSED_AT", b["id"], f["id"], r["pr"])
         if k:
@@ -166,7 +165,7 @@ def fetch_subgraph(*, q=None, supplier=None, kitchen=None, ingredient=None,
             if d and r["u"] is not None:
                 upsert_node(store, "Dish", d)
                 upsert_edge(store, "USED_IN", k["id"], d["id"], r["u"])
-                if o:
+                if o and include_orders:
                     upsert_node(store, "Order", o)
                     upsert_edge(store, "PLACED_AT", o["id"], k["id"], {})
                     upsert_edge(store, "CONTAINS_DISH", o["id"], d["id"], r["cr"])
@@ -307,3 +306,22 @@ def filter_options():
         "locations": [r["v"] for r in run_query(
             "MATCH (n) WHERE n.location IS NOT NULL RETURN DISTINCT n.location AS v ORDER BY v")],
     }
+
+
+def contamination_map():
+    """Every flagged (YELLOW/RED) Supplier+Batch and their unioned downstream."""
+    flagged = run_query("""
+        MATCH (n) WHERE (n:Batch OR n:Supplier) AND n.status IN ['YELLOW','RED']
+        RETURN n.id AS id, labels(n)[0] AS kind ORDER BY n.status DESC, n.id""")
+    store, node_ids, edge_keys = _store(), set(), set()
+    counts = {"kitchens": 0, "dishes": 0, "orders": 0, "customers": 0}
+    for f in flagged:
+        res = supplier_blast(f["id"]) if f["kind"] == "Supplier" else blast_radius(f["id"])
+        merge_stores(store, res["store"])
+        node_ids |= res["nodes"]
+        edge_keys |= res["edges"]
+        for k in counts:
+            counts[k] += res["counts"][k]
+    return {"batch": "ALL FLAGGED", "window": None, "store": store, "nodes": node_ids,
+            "edges": edge_keys, "counts": counts, "flagged": flagged}
+

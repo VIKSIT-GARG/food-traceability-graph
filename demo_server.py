@@ -22,8 +22,7 @@ WIN = {"auto": None, "on": True, "off": False}
 ALLOWED = {"GREEN": {"YELLOW"}, "YELLOW": {"RED", "GREEN"}, "RED": set()}
 DOWN_RULES = {
     "Supplier":     [("SUPPLIES", "dst", "Batch")],
-    "Batch":        [("PROCESSED_AT", "dst", "Facility"),
-                     ("DELIVERED_TO", "dst", "CloudKitchen")],
+    "Batch":        [("DELIVERED_TO", "dst", "CloudKitchen")],
     "Facility":     [],
     "CloudKitchen": [("USED_IN", "dst", "Dish")],
     "Dish":         [("CONTAINS_DISH", "src", "Order")],
@@ -33,7 +32,6 @@ DOWN_RULES = {
 UP_RULES = {
     "Supplier":     [],
     "Batch":        [("SUPPLIES", "src", "Supplier")],
-    "Facility":     [("PROCESSED_AT", "src", "Batch")],
     "CloudKitchen": [("DELIVERED_TO", "src", "Batch"), ("PLACED_AT", "src", "Order")],
     "Dish":         [("USED_IN", "src", "CloudKitchen"), ("CONTAINS_DISH", "src", "Order")],
     "Order":        [("CONTAINS_DISH", "dst", "Dish"), ("PLACED_ORDER", "src", "Customer")],
@@ -250,7 +248,8 @@ class Mem:
         return found
 
     def fetch_subgraph(self, q=None, supplier=None, kitchen=None, ingredient=None,
-                       location=None, statuses=None, date_from=None, date_to=None):
+                       location=None, statuses=None, date_from=None, date_to=None,
+                       include_orders=False, include_facility=False):
         ql = (q or "").lower() or None
         loc = (location or "").lower() or None
         nodes, edges = set(), []
@@ -278,9 +277,10 @@ class Mem:
             nodes.update({bid, sid})
             for x in self.ins(bid, "SUPPLIES"):
                 edges.append(x)
-            for f, x in [(x["dst"], x) for x in self.outs(bid, "PROCESSED_AT")]:
-                nodes.add(f)
-                edges.append(x)
+            if include_facility:
+                for f, x in [(x["dst"], x) for x in self.outs(bid, "PROCESSED_AT")]:
+                    nodes.add(f)
+                    edges.append(x)
             for x in dels:
                 k = x["dst"]
                 nodes.add(k)
@@ -289,13 +289,14 @@ class Mem:
                     d = u["dst"]
                     nodes.add(d)
                     edges.append(u)
-                    for o, cr in self._orders_for(k, d, None):
-                        nodes.add(o)
-                        edges.append(cr)
-                        edges.extend(self.outs(o, "PLACED_AT"))
-                        edges.extend(self.ins(o, "PLACED_ORDER"))
-                        for po in self.ins(o, "PLACED_ORDER"):
-                            nodes.add(po["src"])
+                    if include_orders:
+                        for o, cr in self._orders_for(k, d, None):
+                            nodes.add(o)
+                            edges.append(cr)
+                            edges.extend(self.outs(o, "PLACED_AT"))
+                            edges.extend(self.ins(o, "PLACED_ORDER"))
+                            for po in self.ins(o, "PLACED_ORDER"):
+                                nodes.add(po["src"])
 
         if date_from or date_to:
             lo = datetime.combine(date_from, datetime.min.time()).replace(tzinfo=IST) if date_from else None
@@ -418,6 +419,11 @@ class Mem:
                 out[k] = {"kitchen_id": k, "kitchen": self.props(k)["name"],
                           "location": self.props(k).get("location"),
                           "pull_dishes": sorted(dishes.values(), key=lambda x: x["name"])}
+        blocked = {(x["src"], x["dst"]) for x in self.E
+                   if x["type"] == "MENU_BLOCKED" and x["props"].get("batchId") == bid}
+        for r in out.values():
+            r["pulled"] = bool(r["pull_dishes"]) and all(
+                (r["kitchen_id"], d["id"]) in blocked for d in r["pull_dishes"])
         return sorted(out.values(), key=lambda x: x["kitchen"])
 
     def affected_orders(self, bid, cd):
@@ -690,7 +696,8 @@ def kpis():
     counts = {}
     for x in G.N.values():
         counts[x["label"]] = counts.get(x["label"], 0) + 1
-    flagged = [{"id": i, "status": x["props"]["status"], "kind": x["label"]}
+    flagged = [{"id": i, "status": x["props"]["status"], "kind": x["label"],
+                "reason": x["props"].get("statusReason")}
                for i, x in G.N.items()
                if x["label"] in ("Batch", "Supplier")
                and x["props"].get("status") in ("YELLOW", "RED")]
@@ -719,10 +726,13 @@ def filters():
 def network(q: Optional[str] = None, supplier: Optional[str] = None,
             kitchen: Optional[str] = None, ingredient: Optional[str] = None,
             location: Optional[str] = None, statuses: Optional[List[str]] = Query(None),
-            date_from: Optional[date] = None, date_to: Optional[date] = None):
+            date_from: Optional[date] = None, date_to: Optional[date] = None,
+            include_orders: bool = False, include_facility: bool = False):
     nodes, edges = G.fetch_subgraph(q=q, supplier=supplier, kitchen=kitchen,
                                     ingredient=ingredient, location=location,
-                                    statuses=statuses, date_from=date_from, date_to=date_to)
+                                    statuses=statuses, date_from=date_from, date_to=date_to,
+                                    include_orders=include_orders,
+                                    include_facility=include_facility)
     return G.store_json(nodes, edges)
 
 
@@ -785,6 +795,35 @@ def blast_supplier(supplier_id: str, window: Literal["auto", "on", "off"] = "aut
         raise HTTPException(404, str(e))
     except ValueError as e:
         raise HTTPException(422, str(e))
+
+
+@app.get("/api/contamination")
+def contamination():
+    with G.lock:
+        flagged = [(i, x["label"]) for i, x in G.N.items()
+                   if x["label"] in ("Batch", "Supplier")
+                   and x["props"].get("status") in ("YELLOW", "RED")]
+        nodes, edge_list = set(), []
+        counts = {"kitchens": 0, "dishes": 0, "orders": 0, "customers": 0}
+        for nid, kind in flagged:
+            res = G.supplier_blast(nid) if kind == "Supplier" else G.blast(nid)
+            nodes |= res["nodes"]
+            edge_list.extend(res["edges"])
+            for k in counts:
+                counts[k] += res["counts"][k]
+        dedup = {(x["type"], x["src"], x["dst"]): x for x in edge_list}
+        return _blast_payload({"batch": "ALL FLAGGED", "window": None, "nodes": nodes,
+                               "edges": list(dedup.values()), "counts": counts})
+
+
+class CypherReq(BaseModel):
+    query: str
+
+
+@app.post("/api/query/cypher")
+def query_cypher(req: CypherReq):
+    raise HTTPException(501, "Cypher console requires Neo4j mode (web_app.py). "
+                             "Command mode works in demo mode.")
 
 
 @app.get("/api/pull-list/{batch_id}")

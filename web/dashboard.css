@@ -1,0 +1,65 @@
+/* ---------- view switching ---------- */
+body[data-view="dash"] #layout{display:none}
+#dash{display:none}
+body[data-view="dash"] #dash{display:block}
+.viewtoggle{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);
+  border-radius:11px;padding:3px}
+.viewbtn{border:none;background:transparent;color:var(--muted);font-weight:700;
+  font-size:12.5px;padding:7px 14px;border-radius:8px;cursor:pointer;font-family:var(--sans)}
+.viewbtn.on{background:linear-gradient(135deg,rgba(16,185,129,.28),rgba(56,189,248,.28));
+  color:var(--txt)}
+
+/* ---------- dashboard ---------- */
+#dash{height:calc(100vh - 64px);overflow-y:auto;padding:22px 28px}
+.dhead h1{font-size:20px;font-weight:800;margin-bottom:2px}
+.dsec{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);
+  margin:22px 0 10px}
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.hcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.hcard .n{font-size:26px;font-weight:800;font-family:var(--mono)}
+.hcard .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.hcard.alert{border-color:rgba(239,68,68,.5)}
+.hcard.warn{border-color:rgba(245,158,11,.5)}
+.watch{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.wcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;
+  display:flex;flex-direction:column;gap:8px}
+.wcard.yellow{border-color:rgba(245,158,11,.45)}
+.wcard.red{border-color:rgba(239,68,68,.55);background:rgba(239,68,68,.05)}
+.wcard .wtop{display:flex;align-items:center;gap:9px}
+.wcard .wid{font-family:var(--mono);font-size:13.5px;font-weight:700}
+.wcard .wkind{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+.wcard .wreason{font-size:12px;color:#fcd34d;line-height:1.5}
+.wcard .wacts{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}
+.dcols{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.dcol table{width:100%;border-collapse:collapse;font-size:12.5px}
+.dcol th{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+  text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.dcol td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
+.tag{font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.tag.pulled{color:#fca5a5;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4)}
+.tag.live{color:#6ee7b7;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4)}
+.tag.pending{color:#fcd34d;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4)}
+.tag.notified{color:#6ee7b7;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4)}
+@media (max-width:1000px){.dcols{grid-template-columns:1fr}}
+
+/* ---------- kitchen state chips (inspector) ---------- */
+.kchips{display:flex;flex-wrap:wrap;gap:7px}
+.kchip-state{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;
+  font-family:var(--mono)}
+.kchip-state.live{color:#6ee7b7;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.4)}
+.kchip-state.pulled{color:#fca5a5;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.45)}
+
+/* ---------- command bar ---------- */
+#cmdbar{display:flex;align-items:center;gap:9px;padding:9px 12px;
+  border-bottom:1px solid var(--line);background:rgba(7,13,26,.6)}
+.modebtns{display:flex;gap:3px;background:var(--panel);border:1px solid var(--line);
+  border-radius:9px;padding:2px}
+.modebtn{border:none;background:transparent;color:var(--muted);font-size:11.5px;
+  font-weight:700;padding:6px 10px;border-radius:7px;cursor:pointer;font-family:var(--mono)}
+.modebtn.on{background:rgba(56,189,248,.18);color:#7dd3fc}
+#cmd{flex:1;font-family:var(--mono);font-size:12.5px}
+#cmdchips{display:flex;gap:6px;flex-wrap:wrap;padding:6px 12px;
+  border-bottom:1px solid var(--line);background:rgba(7,13,26,.35)}
+.cchip{font-size:11px;font-family:var(--mono);color:var(--muted);background:var(--panel);
+  border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer}
+.cchip:hover{color:var(--txt);border-color:rgba(56,189,248,.5)}

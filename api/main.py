@@ -19,6 +19,7 @@ if str(BASE_DIR) not in sys.path:
 from core import graph_api as gx          # noqa: E402
 from core import risk                     # noqa: E402
 from core import traceability as tr       # noqa: E402
+from core.query_agent import CypherRejected, run_readonly_cypher  # noqa: E402
 from db.connection import run_query       # noqa: E402
 
 app = FastAPI(
@@ -95,7 +96,8 @@ def kpis():
     flagged = run_query("""
         MATCH (n) WHERE (n:Batch OR n:Supplier)
         AND n.status IN ['YELLOW','RED']
-        RETURN n.id AS id, n.status AS status, labels(n)[0] AS kind
+        RETURN n.id AS id, n.status AS status, labels(n)[0] AS kind,
+               n.statusReason AS reason
         ORDER BY n.status DESC, n.id
     """)
     blocked = run_query(
@@ -128,6 +130,8 @@ def network(
     statuses: Optional[List[str]] = Query(None),
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    include_orders: bool = False,
+    include_facility: bool = False,
 ):
     clean_statuses = statuses if isinstance(statuses, list) else None
     return store_json(
@@ -140,6 +144,8 @@ def network(
             statuses=clean_statuses,
             date_from=date_from,
             date_to=date_to,
+            include_orders=include_orders,
+            include_facility=include_facility,
         )
     )
 
@@ -189,6 +195,25 @@ def blast_supplier(supplier_id: str, window: Literal["auto", "on", "off"] = "aut
         raise HTTPException(404, str(e))
     except ValueError as e:
         raise HTTPException(422, str(e))
+
+
+@app.get("/api/contamination")
+def contamination():
+    return _blast_payload(gx.contamination_map())
+
+
+class CypherReq(BaseModel):
+    query: str
+
+
+@app.post("/api/query/cypher")
+def query_cypher(req: CypherReq):
+    try:
+        return run_readonly_cypher(req.query)
+    except CypherRejected as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(422, f"Query error: {e}")
 
 
 @app.get("/api/pull-list/{batch_id}")

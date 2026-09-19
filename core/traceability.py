@@ -77,7 +77,7 @@ def pull_list(batch_id, cd=None):
     """THE problem-statement output: per kitchen, which dishes to pull from the menu."""
     if cd is None:
         cd = resolve_window(get_batch(batch_id), None)
-    return run_query("""
+    rows = run_query("""
         MATCH (b:Batch {id: $bid})-[:DELIVERED_TO]->(k:CloudKitchen)
         MATCH (k)-[u:USED_IN]->(d:Dish)
         WHERE u.batchId = b.id AND ($cd IS NULL OR u.timestamp >= $cd)
@@ -85,6 +85,13 @@ def pull_list(batch_id, cd=None):
                collect(DISTINCT {id: d.id, name: d.name}) AS pull_dishes
         ORDER BY k.name
     """, {"bid": batch_id, "cd": cd})
+    blocked = {(x["k"], x["d"]) for x in run_query(
+        "MATCH (k:CloudKitchen)-[m:MENU_BLOCKED]->(d:Dish) WHERE m.batchId=$bid "
+        "RETURN k.id AS k, d.id AS d", {"bid": batch_id})}
+    for r in rows:
+        r["pulled"] = bool(r["pull_dishes"]) and all(
+            (r["kitchen_id"], x["id"]) in blocked for x in r["pull_dishes"])
+    return rows
 
 
 def affected_order_records(batch_id, cd):

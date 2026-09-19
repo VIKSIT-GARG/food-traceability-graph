@@ -105,3 +105,37 @@ def test_api_supplier_intel():
     res = main.supplier_intel("SUP-002")
     assert res["summary"]["supplier"]["id"] == "SUP-002"
     assert len(res["batches"]) > 0
+
+
+def test_api_contamination():
+    res = main.contamination()
+    assert res["batch"] == "ALL FLAGGED"
+    assert "counts" in res
+    assert "node_ids" in res
+
+
+def test_api_query_cypher():
+    from core.query_agent import CypherRejected
+    # Valid read query
+    req = main.CypherReq(query="MATCH (b:Batch) RETURN b.id, b.status LIMIT 2")
+    res = main.query_cypher(req)
+    assert "rows" in res
+    assert "columns" in res
+    assert len(res["rows"]) <= 2
+
+    # Blocked write query
+    with pytest.raises(main.HTTPException) as exc:
+        main.query_cypher(main.CypherReq(query="MATCH (b:Batch) DELETE b"))
+    assert exc.value.status_code == 400
+
+
+def test_demo_server_contamination_and_cypher():
+    import demo_server
+    res = demo_server.contamination()
+    assert res["batch"] == "ALL FLAGGED"
+    assert "counts" in res
+
+    with pytest.raises(demo_server.HTTPException) as exc:
+        demo_server.query_cypher(demo_server.CypherReq(query="MATCH (b:Batch) RETURN b"))
+    assert exc.value.status_code == 501
+
